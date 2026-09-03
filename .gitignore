@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+venv/
+.venv/
+closet.json
+static/uploads/*
+!static/uploads/.gitkeep

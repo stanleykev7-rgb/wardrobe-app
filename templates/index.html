@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}My Closet{% endblock %}
+{% block content %}
+  <h1>My Closet</h1>
+
+  <form class="upload" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+    <p>Snap or upload a photo of one garment at a time — Groq will identify it automatically.</p>
+    <input type="file" name="photo" accept="image/*" required>
+    <br><br>
+    <input type="submit" value="Add to closet">
+  </form>
+
+  <h2>Items ({{ closet|length }})</h2>
+  {% if closet %}
+    <div class="grid">
+      {% for item in closet %}
+        <div class="card item">
+          <img src="{{ url_for('static', filename='uploads/' + item.image) }}" alt="{{ item.type }}">
+          <strong>{{ item.color }} {{ item.type }}</strong><br>
+          <span class="badge">{{ item.zone }}</span>
+          <span class="badge">warmth {{ item.warmth }}/10</span>
+          {% if item.waterproof %}<span class="badge">waterproof</span>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>No items yet — upload your first garment above.</p>
+  {% endif %}
+{% endblock %}

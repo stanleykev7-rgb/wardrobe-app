@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Today's Suggestion{% endblock %}
+{% block content %}
+  <h1>Outfit suggestion for {{ weather.city }}</h1>
+
+  <div class="card">
+    <strong>{{ weather.temp_c }}°C</strong> (feels like {{ weather.feels_like_c }}°C) — {{ weather.condition }}<br>
+    Wind: {{ weather.wind_kph | round(1) }} kph
+    {% if weather.rain %} · ☔ Rain expected{% endif %}
+  </div>
+
+  <form action="{{ url_for('suggest') }}" method="get">
+    <input type="text" name="city" placeholder="City,CountryCode e.g. Kochi,IN" value="{{ city }}">
+    <input type="submit" value="Update">
+  </form>
+
+  <h2>Recommended</h2>
+  <div class="grid">
+    {% for zone, item in outfit.items.items() %}
+      {% if item %}
+        <div class="card item">
+          <img src="{{ url_for('static', filename='uploads/' + item.image) }}" alt="{{ item.type }}">
+          <strong>{{ item.color }} {{ item.type }}</strong><br>
+          <span class="badge">{{ zone }}</span>
+          <span class="badge">warmth {{ item.warmth }}/10</span>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {% if outfit.notes %}
+    <h3>Notes</h3>
+    <ul>
+      {% for note in outfit.notes %}
+        <li>{{ note }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}
