@@ -81,6 +81,64 @@ Visit **http://localhost:5000** in your browser.
 3. Go to **Suggest outfit**, optionally change the city, and you'll get a
    recommended item per zone based on today's actual weather.
 
+## 6. Push to GitHub
+
+```bash
+# Create a new empty repo on github.com first (no README/license), then:
+git remote add origin https://github.com/<your-username>/wardrobe-app.git
+git branch -M main
+git push -u origin main
+```
+
+Your `.env` file is already excluded via `.gitignore`, so your API keys
+won't be pushed. Never commit `.env` — only `.env.example` (which has no
+real keys) should go to GitHub.
+
+## 7. Deploy so it's actually running online (not just local)
+
+GitHub only hosts your code — it doesn't run Python servers (GitHub Pages
+serves static sites only, not Flask apps). To get a live URL, connect your
+GitHub repo to a hosting platform. **Render** is the easiest free option:
+
+1. Go to https://render.com and sign up (you can sign in with GitHub).
+2. Click **New +** → **Web Service**.
+3. Connect your GitHub account and select your `wardrobe-app` repo.
+4. Render will detect it's Python. Set:
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `gunicorn main:app` (already in the `Procfile`,
+     Render usually picks this up automatically)
+5. Under **Environment**, add your environment variables (same as `.env`):
+   - `GROQ_API_KEY`
+   - `OPENWEATHER_API_KEY`
+   - `FLASK_SECRET_KEY`
+   - `DEFAULT_CITY`
+6. Click **Create Web Service**. Render will build and deploy — you'll get
+   a live URL like `https://wardrobe-app-xxxx.onrender.com`.
+7. From now on, every `git push` to your GitHub repo auto-redeploys.
+
+**Railway** (https://railway.app) works almost identically — connect
+GitHub, it auto-detects the Procfile, add the same environment variables.
+
+### Important: free-tier storage is not permanent
+
+Render's and Railway's free tiers use an **ephemeral filesystem** — any
+files written while the app is running (your `closet.json` and the photos
+in `static/uploads/`) get wiped whenever the app restarts or redeploys
+(free tiers also spin down after inactivity and restart on the next
+request). That's fine for trying things out, but not for a closet you
+actually want to keep.
+
+For real persistence later, you'd swap:
+- `closet.json` → a hosted database (Render's free Postgres tier, or
+  Supabase's free tier)
+- `static/uploads/` → object storage (Supabase Storage, Cloudflare R2, or
+  AWS S3 all have free tiers)
+
+Both are drop-in replacements for `closet_store.py` and the file-saving
+logic in `main.py` — the rest of the app (Groq classification, weather,
+recommendation logic) doesn't need to change. Happy to help wire either of
+those up when you're ready to make it permanent.
+
 ## Notes and next steps
 
 - **Storage is a flat JSON file** (`closet.json`) to keep this simple. If

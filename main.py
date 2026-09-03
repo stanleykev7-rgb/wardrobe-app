@@ -98,4 +98,8 @@ def suggest():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # This block only runs for local development (python main.py).
+    # In production, gunicorn imports `app` directly (see Procfile) and
+    # this block is never executed.
+    debug_mode = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
+    app.run(debug=debug_mode, port=int(os.environ.get("PORT", 5000)))
