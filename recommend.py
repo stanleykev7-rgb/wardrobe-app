@@ -47,7 +47,7 @@ def suggest_outfit(closet: list, weather: dict) -> dict:
     """
     closet: list of item dicts (see closet_store)
     weather: dict from weather.get_current_weather
-    Returns: {"items": {zone: item_or_None}, "target_warmth": int, "notes": [str]}
+    Returns: {"picks": {zone: item_or_None}, "target_warmth": int, "notes": [str]}
     """
     temp = weather.get("feels_like_c", weather.get("temp_c", 20))
     target = _target_warmth(temp)
@@ -68,7 +68,7 @@ def suggest_outfit(closet: list, weather: dict) -> dict:
         notes.append("Rain is expected but no waterproof items were found — consider bringing an umbrella.")
 
     return {
-        "items": picks,
+        "picks": picks,
         "target_warmth": target,
         "notes": notes,
     }

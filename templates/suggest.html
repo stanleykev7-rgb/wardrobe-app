@@ -16,7 +16,7 @@
 
   <h2>Recommended</h2>
   <div class="grid">
-    {% for zone, item in outfit.items.items() %}
+    {% for zone, item in outfit.picks.items() %}
       {% if item %}
         <div class="card item">
           <img src="{{ url_for('static', filename='uploads/' + item.image) }}" alt="{{ item.type }}">
