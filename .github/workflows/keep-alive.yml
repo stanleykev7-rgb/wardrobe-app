@@ -1,0 +1,16 @@
+name: Keep Supabase and Render awake
+
+# Runs every 3 days - well under Supabase's 7-day auto-pause threshold,
+# and also wakes a Render/Railway free instance if it spun down from idling.
+on:
+  schedule:
+    - cron: "0 6 */3 * *"   # 06:00 UTC, every 3 days
+  workflow_dispatch: {}       # lets you trigger it manually from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the app's keep-alive endpoint
+        run: |
+          curl -sf "${{ secrets.APP_URL }}/keep-alive" || (echo "Ping failed" && exit 1)

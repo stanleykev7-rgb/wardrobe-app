@@ -11,7 +11,7 @@ from weather import get_current_weather
 from recommend import suggest_outfit
 from closet_store import load_closet, save_item, update_item, delete_item
 from image_utils import process_image
-import storage_r2
+import storage_supabase
 
 load_dotenv()
 
@@ -32,7 +32,7 @@ def allowed_file(filename):
 @app.route("/")
 def index():
     closet = load_closet()
-    return render_template("index.html", closet=closet, r2_public_url=os.environ.get("R2_PUBLIC_URL", ""))
+    return render_template("index.html", closet=closet)
 
 
 @app.route("/upload", methods=["POST"])
@@ -65,7 +65,7 @@ def upload():
         if os.path.exists(raw_path):
             os.remove(raw_path)
 
-    image_key = f"{storage_r2.PHOTO_PREFIX}{item_id}.jpg"
+    image_key = f"photos/{item_id}.jpg"
 
     # Classify first, while the processed file still exists locally.
     try:
@@ -79,9 +79,10 @@ def upload():
         attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False}
         needs_review = True
 
-    # Then upload the same local file to R2 and clean up.
+    # Then upload the same local file to Supabase Storage and clean up.
     try:
-        storage_r2.upload_photo(processed_path, image_key, "image/jpeg")
+        storage_supabase.upload_photo(processed_path, image_key, "image/jpeg")
+        image_url = storage_supabase.public_url_for(image_key)
     except Exception as e:
         flash(f"Could not upload photo to storage: {e}")
         return redirect(url_for("index"))
@@ -92,6 +93,7 @@ def upload():
     item = {
         "id": item_id,
         "image_key": image_key,
+        "image_url": image_url,
         "type": attrs.get("type", "unknown"),
         "color": attrs.get("color", "unknown"),
         "warmth": attrs.get("warmth", 5),
@@ -148,10 +150,22 @@ def suggest():
 
     outfit = suggest_outfit(closet, weather)
 
-    return render_template(
-        "suggest.html", weather=weather, outfit=outfit, city=city,
-        r2_public_url=os.environ.get("R2_PUBLIC_URL", ""),
-    )
+    return render_template("suggest.html", weather=weather, outfit=outfit, city=city)
+
+
+@app.route("/keep-alive")
+def keep_alive():
+    """
+    Hit by a scheduled GitHub Actions ping (see .github/workflows/keep-alive.yml)
+    so Supabase sees regular API activity and doesn't auto-pause the free
+    project after 7 days of inactivity. Also incidentally wakes this app
+    if it's a Render/Railway free instance that spun down from idling.
+    """
+    try:
+        storage_supabase.ping()
+        return {"status": "ok"}, 200
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}, 500
 
 
 if __name__ == "__main__":

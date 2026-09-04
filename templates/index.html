@@ -15,7 +15,7 @@
     <div class="grid">
       {% for item in closet %}
         <div class="card item">
-          <img src="{{ r2_public_url }}/{{ item.image_key }}" alt="{{ item.type }}">
+          <img src="{{ item.image_url }}" alt="{{ item.type }}">
           {% if item.needs_review %}
             <span class="badge badge-warn">needs review</span>
             <form action="{{ url_for('edit_item', item_id=item.id) }}" method="post" class="edit-form">
