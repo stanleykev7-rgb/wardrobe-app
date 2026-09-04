@@ -72,7 +72,7 @@ def classify_garment(image_path: str) -> dict:
             }
         ],
         temperature=0.2,
-        max_completion_tokens=300,
+        max_tokens=300,
         response_format={"type": "json_object"},
     )
 
