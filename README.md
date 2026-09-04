@@ -16,7 +16,7 @@ warmth, and the app suggests what to wear based on today's weather.
   database setup needed to get started).
 - `templates/` — the three HTML pages (closet grid, upload form, suggestion).
 
-## 1. Get your free API keys
+## 1. Get your free API keys and storage
 
 1. **Groq** (does the photo classification): go to
    https://console.groq.com/keys, sign up (free), and create a key. It
@@ -25,23 +25,41 @@ warmth, and the app suggests what to wear based on today's weather.
    https://openweathermap.org/api, sign up (free tier), and grab your API
    key from your account page. Note: new OpenWeatherMap keys can take up to
    ~1 hour to activate.
+3. **Cloudflare R2** (stores your photos *and* your closet data, so
+   everything survives restarts/redeploys — see "Why R2" below):
+   - Sign up at https://dash.cloudflare.com (free, no card required for R2's
+     free tier).
+   - Go to **R2 Object Storage** → **Create bucket**. Name it anything,
+     e.g. `wardrobe-app`.
+   - Open the bucket → **Settings** → under **Public Access**, enable the
+     `r2.dev` subdomain (or connect a custom domain if you have one). Copy
+     that public URL — you'll need it as `R2_PUBLIC_URL`.
+   - Go to **R2** → **Manage API Tokens** → **Create API Token**. Give it
+     **Object Read & Write** permission, scoped to your bucket. Copy the
+     **Access Key ID**, **Secret Access Key**, and note your **Account ID**
+     (shown on the R2 overview page).
+
+### Why R2 instead of local disk, and why no separate database?
+
+Render/Railway's free tier wipes local files on every restart. R2 gives
+you **10GB of storage free, forever, with zero egress fees** — plenty for
+thousands of garment photos (each photo is resized/compressed to ~100-200KB
+before storage, see `image_utils.py`). Since this is a single-user hobby
+app, the closet's metadata (`closet.json`) is stored as one JSON object
+inside the same R2 bucket instead of standing up a separate database —
+one less service to configure. If you ever need multi-user concurrent
+writes, swap `closet_store.py` for a real database; nothing else changes.
 
 ## 2. Set up the project
 
 ```bash
-# Create the project folder and initialize git
 mkdir wardrobe-app
 cd wardrobe-app
 git init
 
-# (copy in the files from this scaffold, or clone if you've pushed it to
-# your own GitHub repo)
-
-# Create and activate a virtual environment
 python3 -m venv venv
 source venv/bin/activate      # on Windows: venv\Scripts\activate
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -51,16 +69,9 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Then open `.env` and fill in:
-
-```
-GROQ_API_KEY=gsk_your_real_key
-OPENWEATHER_API_KEY=your_real_key
-DEFAULT_CITY=Kochi,IN
-```
-
-(`DEFAULT_CITY` uses OpenWeatherMap's `City,CountryCode` format — change it
-to wherever you are.)
+Then fill in `GROQ_API_KEY`, `OPENWEATHER_API_KEY`, and the R2 values:
+`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+`R2_BUCKET_NAME`, `R2_PUBLIC_URL`.
 
 ## 4. Run it
 
@@ -68,76 +79,47 @@ to wherever you are.)
 python main.py
 ```
 
-Visit **http://localhost:5000** in your browser.
+Visit **http://localhost:5000**.
 
 ## 5. Use it
 
-1. On the home page, upload a photo of one garment at a time (a jacket, a
-   pair of jeans, shoes, a hat, etc). Groq will identify the type, color,
-   warmth score, body zone, and whether it looks waterproof — this happens
-   automatically, no manual tagging needed.
-2. Repeat for a handful of items across different zones (top, bottom, feet
-   — head is optional) so there's something to recommend from.
-3. Go to **Suggest outfit**, optionally change the city, and you'll get a
-   recommended item per zone based on today's actual weather.
+1. Upload a photo of one garment at a time. Groq identifies it
+   automatically — type, color, warmth score, zone, waterproof.
+2. **If Groq is rate-limited or unavailable:** the app retries automatically
+   (with backoff) up to 2 times. If it still fails, your photo is **not
+   lost** — the item is saved with a "needs review" badge and a small form
+   right on the closet page so you can tag it manually in a few seconds.
+3. Repeat across a few zones (top, bottom, feet — head is optional).
+4. Go to **Suggest outfit** for a recommendation based on today's weather.
 
 ## 6. Push to GitHub
 
 ```bash
-# Create a new empty repo on github.com first (no README/license), then:
 git remote add origin https://github.com/<your-username>/wardrobe-app.git
 git branch -M main
 git push -u origin main
 ```
 
-Your `.env` file is already excluded via `.gitignore`, so your API keys
-won't be pushed. Never commit `.env` — only `.env.example` (which has no
-real keys) should go to GitHub.
+`.env` is gitignored — your keys never get pushed. Only `.env.example`
+(no real keys) should go to GitHub.
 
-## 7. Deploy so it's actually running online (not just local)
+## 7. Deploy
 
-GitHub only hosts your code — it doesn't run Python servers (GitHub Pages
-serves static sites only, not Flask apps). To get a live URL, connect your
-GitHub repo to a hosting platform. **Render** is the easiest free option:
+GitHub only hosts code — it doesn't run Python servers. Connect your repo
+to a host that does:
 
-1. Go to https://render.com and sign up (you can sign in with GitHub).
-2. Click **New +** → **Web Service**.
-3. Connect your GitHub account and select your `wardrobe-app` repo.
-4. Render will detect it's Python. Set:
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `gunicorn main:app` (already in the `Procfile`,
-     Render usually picks this up automatically)
-5. Under **Environment**, add your environment variables (same as `.env`):
-   - `GROQ_API_KEY`
-   - `OPENWEATHER_API_KEY`
-   - `FLASK_SECRET_KEY`
-   - `DEFAULT_CITY`
-6. Click **Create Web Service**. Render will build and deploy — you'll get
-   a live URL like `https://wardrobe-app-xxxx.onrender.com`.
-7. From now on, every `git push` to your GitHub repo auto-redeploys.
+1. https://render.com → sign in with GitHub → **New +** → **Web Service**
+   → select your repo.
+2. Build command: `pip install -r requirements.txt`
+   Start command: `gunicorn main:app` (matches the `Procfile`)
+3. Add all your `.env` values as environment variables in Render's
+   dashboard (never upload `.env` itself).
+4. Deploy. Every future `git push` auto-redeploys.
 
-**Railway** (https://railway.app) works almost identically — connect
-GitHub, it auto-detects the Procfile, add the same environment variables.
+Railway (https://railway.app) works almost identically.
 
-### Important: free-tier storage is not permanent
-
-Render's and Railway's free tiers use an **ephemeral filesystem** — any
-files written while the app is running (your `closet.json` and the photos
-in `static/uploads/`) get wiped whenever the app restarts or redeploys
-(free tiers also spin down after inactivity and restart on the next
-request). That's fine for trying things out, but not for a closet you
-actually want to keep.
-
-For real persistence later, you'd swap:
-- `closet.json` → a hosted database (Render's free Postgres tier, or
-  Supabase's free tier)
-- `static/uploads/` → object storage (Supabase Storage, Cloudflare R2, or
-  AWS S3 all have free tiers)
-
-Both are drop-in replacements for `closet_store.py` and the file-saving
-logic in `main.py` — the rest of the app (Groq classification, weather,
-recommendation logic) doesn't need to change. Happy to help wire either of
-those up when you're ready to make it permanent.
+**With R2 in place, your data now survives restarts** — this was the main
+gap in the earlier local-storage version.
 
 ## Notes and next steps
 

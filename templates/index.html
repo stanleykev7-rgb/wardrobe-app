@@ -15,11 +15,31 @@
     <div class="grid">
       {% for item in closet %}
         <div class="card item">
-          <img src="{{ url_for('static', filename='uploads/' + item.image) }}" alt="{{ item.type }}">
-          <strong>{{ item.color }} {{ item.type }}</strong><br>
-          <span class="badge">{{ item.zone }}</span>
-          <span class="badge">warmth {{ item.warmth }}/10</span>
-          {% if item.waterproof %}<span class="badge">waterproof</span>{% endif %}
+          <img src="{{ r2_public_url }}/{{ item.image_key }}" alt="{{ item.type }}">
+          {% if item.needs_review %}
+            <span class="badge badge-warn">needs review</span>
+            <form action="{{ url_for('edit_item', item_id=item.id) }}" method="post" class="edit-form">
+              <input type="text" name="type" placeholder="Type (e.g. denim jacket)" required>
+              <input type="text" name="color" placeholder="Color" required>
+              <select name="zone">
+                <option value="top">top</option>
+                <option value="bottom">bottom</option>
+                <option value="feet">feet</option>
+                <option value="head">head</option>
+              </select>
+              <input type="number" name="warmth" min="1" max="10" value="5" title="Warmth 1-10">
+              <label><input type="checkbox" name="waterproof"> waterproof</label>
+              <input type="submit" value="Save">
+            </form>
+          {% else %}
+            <strong>{{ item.color }} {{ item.type }}</strong><br>
+            <span class="badge">{{ item.zone }}</span>
+            <span class="badge">warmth {{ item.warmth }}/10</span>
+            {% if item.waterproof %}<span class="badge">waterproof</span>{% endif %}
+          {% endif %}
+          <form action="{{ url_for('delete_item_route', item_id=item.id) }}" method="post" class="delete-form">
+            <button type="submit" class="link-btn">Remove</button>
+          </form>
         </div>
       {% endfor %}
     </div>

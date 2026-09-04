@@ -19,7 +19,7 @@
     {% for zone, item in outfit.picks.items() %}
       {% if item %}
         <div class="card item">
-          <img src="{{ url_for('static', filename='uploads/' + item.image) }}" alt="{{ item.type }}">
+          <img src="{{ r2_public_url }}/{{ item.image_key }}" alt="{{ item.type }}">
           <strong>{{ item.color }} {{ item.type }}</strong><br>
           <span class="badge">{{ zone }}</span>
           <span class="badge">warmth {{ item.warmth }}/10</span>

@@ -5,6 +5,7 @@ and return structured attributes we can store in the closet.
 
 import os
 import json
+import time
 import base64
 
 from groq import Groq
@@ -13,6 +14,9 @@ from groq import Groq
 # Check https://console.groq.com/docs/vision if this ever stops working —
 # Groq periodically retires/renames vision models.
 VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b")
+
+MAX_RETRIES = 2  # total attempts = MAX_RETRIES + 1
+BASE_DELAY_SECONDS = 2
 
 CLASSIFY_PROMPT = """You are looking at a photo of a single clothing item or accessory.
 Identify it and respond with ONLY a JSON object (no markdown, no extra text) with these exact keys:
@@ -36,6 +40,13 @@ Rules:
 """
 
 
+class ClassificationFailed(Exception):
+    """Raised when Groq classification fails after retries. Callers should
+    catch this specifically and fall back to manual entry, rather than
+    losing the upload."""
+    pass
+
+
 def _encode_image(image_path: str) -> str:
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -45,7 +56,9 @@ def classify_garment(image_path: str) -> dict:
     """
     Sends the image at image_path to Groq's vision model and returns a dict:
     {type, color, zone, warmth, waterproof}
-    Raises an exception if the API call fails or the model doesn't return valid JSON.
+    Retries on rate limits / transient errors. Raises ClassificationFailed
+    (not the raw exception) if every attempt fails, so callers can catch
+    one clear exception type and fall back to manual entry.
     """
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
@@ -57,30 +70,54 @@ def classify_garment(image_path: str) -> dict:
     mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
     b64_image = _encode_image(image_path)
 
-    completion = client.chat.completions.create(
-        model=VISION_MODEL,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": CLASSIFY_PROMPT},
+    last_error = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            completion = client.chat.completions.create(
+                model=VISION_MODEL,
+                messages=[
                     {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime};base64,{b64_image}"},
-                    },
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": CLASSIFY_PROMPT},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{b64_image}"},
+                            },
+                        ],
+                    }
                 ],
-            }
-        ],
-        temperature=0.2,
-        max_tokens=800,
-        reasoning_effort="none",
-        response_format={"type": "json_object"},
-    )
+                temperature=0.2,
+                max_tokens=800,
+                reasoning_effort="none",
+                response_format={"type": "json_object"},
+            )
+            raw = completion.choices[0].message.content
+            data = json.loads(raw)
+            return _sanitize(data)
 
-    raw = completion.choices[0].message.content
-    data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            # Model didn't return valid JSON - retrying rarely helps here,
+            # but one retry with the same low temperature is cheap insurance.
+            last_error = e
+        except Exception as e:
+            # Covers rate limits (429) and transient 5xx errors from Groq.
+            # groq's SDK exceptions carry a status_code attribute when
+            # they originate from an HTTP response.
+            status = getattr(e, "status_code", None)
+            last_error = e
+            if status is not None and status != 429 and status < 500:
+                # A genuine 4xx that isn't a rate limit (e.g. bad request,
+                # auth failure) won't be fixed by retrying.
+                break
 
-    # Basic sanitation so a slightly-off model response never crashes the app
+        if attempt < MAX_RETRIES:
+            time.sleep(BASE_DELAY_SECONDS * (2 ** attempt))
+
+    raise ClassificationFailed(str(last_error))
+
+
+def _sanitize(data: dict) -> dict:
     zone = str(data.get("zone", "top")).lower()
     if zone not in ("head", "top", "bottom", "feet"):
         zone = "top"

@@ -4,23 +4,25 @@ import uuid
 from datetime import datetime
 
 from flask import Flask, request, render_template, redirect, url_for, flash
-from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
-from groq_classifier import classify_garment
+from groq_classifier import classify_garment, ClassificationFailed
 from weather import get_current_weather
 from recommend import suggest_outfit
-from closet_store import load_closet, save_item
+from closet_store import load_closet, save_item, update_item, delete_item
+from image_utils import process_image
+import storage_r2
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 
-UPLOAD_FOLDER = os.path.join(app.root_path, "static", "uploads")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Temp scratch space only - the real, persistent copy lives in R2.
+TMP_DIR = "/tmp/wardrobe-uploads"
+os.makedirs(TMP_DIR, exist_ok=True)
 
 
 def allowed_file(filename):
@@ -30,7 +32,7 @@ def allowed_file(filename):
 @app.route("/")
 def index():
     closet = load_closet()
-    return render_template("index.html", closet=closet)
+    return render_template("index.html", closet=closet, r2_public_url=os.environ.get("R2_PUBLIC_URL", ""))
 
 
 @app.route("/upload", methods=["POST"])
@@ -48,32 +50,84 @@ def upload():
         flash("Unsupported file type. Use png, jpg, jpeg, or webp.")
         return redirect(url_for("index"))
 
-    # Save the image with a unique name so uploads never collide
-    ext = file.filename.rsplit(".", 1)[1].lower()
-    unique_name = f"{uuid.uuid4().hex}.{ext}"
-    save_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
-    file.save(save_path)
+    item_id = uuid.uuid4().hex
+    raw_path = os.path.join(TMP_DIR, f"{item_id}_raw")
+    processed_path = os.path.join(TMP_DIR, f"{item_id}.jpg")
+    file.save(raw_path)
 
-    # Ask Groq's vision model what the garment is
+    # Resize/compress before it ever touches storage or the Groq API.
     try:
-        attrs = classify_garment(save_path)
+        process_image(raw_path, processed_path)
     except Exception as e:
-        flash(f"Classification failed: {e}")
+        flash(f"Could not process image: {e}")
         return redirect(url_for("index"))
+    finally:
+        if os.path.exists(raw_path):
+            os.remove(raw_path)
+
+    image_key = f"{storage_r2.PHOTO_PREFIX}{item_id}.jpg"
+
+    # Classify first, while the processed file still exists locally.
+    try:
+        attrs = classify_garment(processed_path)
+        needs_review = False
+    except ClassificationFailed:
+        attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False}
+        needs_review = True
+    except Exception as e:
+        flash(f"Unexpected error during classification: {e}")
+        attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False}
+        needs_review = True
+
+    # Then upload the same local file to R2 and clean up.
+    try:
+        storage_r2.upload_photo(processed_path, image_key, "image/jpeg")
+    except Exception as e:
+        flash(f"Could not upload photo to storage: {e}")
+        return redirect(url_for("index"))
+    finally:
+        if os.path.exists(processed_path):
+            os.remove(processed_path)
 
     item = {
-        "id": uuid.uuid4().hex,
-        "image": unique_name,
+        "id": item_id,
+        "image_key": image_key,
         "type": attrs.get("type", "unknown"),
         "color": attrs.get("color", "unknown"),
         "warmth": attrs.get("warmth", 5),
         "zone": attrs.get("zone", "top"),
         "waterproof": attrs.get("waterproof", False),
+        "needs_review": needs_review,
         "added_at": datetime.utcnow().isoformat(),
     }
     save_item(item)
 
-    flash(f"Added {item['color']} {item['type']} (warmth {item['warmth']}/10, zone: {item['zone']}).")
+    if needs_review:
+        flash("Auto-detection didn't work this time — this item was saved, please edit its details below.")
+    else:
+        flash(f"Added {item['color']} {item['type']} (warmth {item['warmth']}/10, zone: {item['zone']}).")
+    return redirect(url_for("index"))
+
+
+@app.route("/item/<item_id>/edit", methods=["POST"])
+def edit_item(item_id):
+    updates = {
+        "type": request.form.get("type", "").strip() or "unknown item",
+        "color": request.form.get("color", "").strip() or "unknown",
+        "zone": request.form.get("zone") if request.form.get("zone") in ("head", "top", "bottom", "feet") else "top",
+        "warmth": max(1, min(10, int(request.form.get("warmth", 5) or 5))),
+        "waterproof": request.form.get("waterproof") == "on",
+        "needs_review": False,
+    }
+    update_item(item_id, updates)
+    flash("Item updated.")
+    return redirect(url_for("index"))
+
+
+@app.route("/item/<item_id>/delete", methods=["POST"])
+def delete_item_route(item_id):
+    delete_item(item_id)
+    flash("Item removed.")
     return redirect(url_for("index"))
 
 
@@ -94,12 +148,12 @@ def suggest():
 
     outfit = suggest_outfit(closet, weather)
 
-    return render_template("suggest.html", weather=weather, outfit=outfit, city=city)
+    return render_template(
+        "suggest.html", weather=weather, outfit=outfit, city=city,
+        r2_public_url=os.environ.get("R2_PUBLIC_URL", ""),
+    )
 
 
 if __name__ == "__main__":
-    # This block only runs for local development (python main.py).
-    # In production, gunicorn imports `app` directly (see Procfile) and
-    # this block is never executed.
     debug_mode = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
     app.run(debug=debug_mode, port=int(os.environ.get("PORT", 5000)))
