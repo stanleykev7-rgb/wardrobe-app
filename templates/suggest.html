@@ -1,42 +1,55 @@
 {% extends "base.html" %}
-{% block title %}Today's Suggestion{% endblock %}
+{% block title %}Today's Outfit{% endblock %}
 {% block content %}
-  <h1>Outfit suggestion for {{ weather.city }}</h1>
 
-  <div class="card">
-    <strong>{{ weather.temp_c }}°C</strong> (feels like {{ weather.feels_like_c }}°C) — {{ weather.condition }}<br>
-    Wind: {{ weather.wind_kph | round(1) }} kph
-    {% if weather.rain %} · ☔ Rain expected{% endif %}
-  </div>
+  <p class="weather-line">It's currently <strong>{{ weather.temp_c }}°C</strong> in <strong>{{ weather.city }}</strong>, feeling like {{ weather.feels_like_c }}°, under {{ weather.condition|lower }} skies{% if weather.rain %} with rain expected{% endif %}.</p>
 
-  <form action="{{ url_for('suggest') }}" method="get" class="show-loading-form" data-loading-message="Checking today's weather and styling an outfit…">
+  <form action="{{ url_for('suggest') }}" method="get" class="show-loading-form" data-loading-message="Checking today's weather and styling an outfit…" style="margin-bottom: 20px; display: flex; gap: 8px;">
     <input type="text" name="city" placeholder="City,CountryCode e.g. Kochi,IN" value="{{ city }}">
     <input type="submit" value="Update">
   </form>
 
-  <h2>Recommended</h2>
-  {% if outfit.reasoning %}
-    <div class="card reasoning-card">💬 {{ outfit.reasoning }}</div>
-  {% endif %}
-  <div class="grid">
-    {% for zone, item in outfit.picks.items() %}
-      {% if item %}
-        <div class="card item">
-          <img src="{{ item.image_url }}" alt="{{ item.type }}">
-          <strong>{{ item.color }} {{ item.type }}</strong><br>
-          <span class="badge">{{ zone }}</span>
-          <span class="badge">warmth {{ item.warmth }}/10</span>
-        </div>
-      {% endif %}
-    {% endfor %}
+  <div class="flatlay">
+    {% if outfit.picks.top %}
+      <div class="fl-item fl-top">
+        <img src="{{ outfit.picks.top.image_url }}" alt="{{ outfit.picks.top.type }}">
+        <div class="label">{{ outfit.picks.top.color }} {{ outfit.picks.top.type }}</div>
+      </div>
+    {% endif %}
+    {% if outfit.picks.bottom %}
+      <div class="fl-item fl-bottom">
+        <img src="{{ outfit.picks.bottom.image_url }}" alt="{{ outfit.picks.bottom.type }}">
+        <div class="label">{{ outfit.picks.bottom.color }} {{ outfit.picks.bottom.type }}</div>
+      </div>
+    {% endif %}
+    {% if outfit.picks.feet %}
+      <div class="fl-item fl-feet">
+        <img src="{{ outfit.picks.feet.image_url }}" alt="{{ outfit.picks.feet.type }}">
+        <div class="label">{{ outfit.picks.feet.color }} {{ outfit.picks.feet.type }}</div>
+      </div>
+    {% endif %}
+    {% if outfit.picks.head %}
+      <div class="fl-item fl-head">
+        <img src="{{ outfit.picks.head.image_url }}" alt="{{ outfit.picks.head.type }}">
+        <div class="label">{{ outfit.picks.head.color }} {{ outfit.picks.head.type }}</div>
+      </div>
+    {% endif %}
+
+    {% if outfit.reasoning %}
+      <div class="stylist-note">
+        <span class="stylist-label">Stylist's note</span>
+        {{ outfit.reasoning }}
+      </div>
+    {% endif %}
   </div>
 
   {% if outfit.notes %}
-    <h3>Notes</h3>
-    <ul>
-      {% for note in outfit.notes %}
-        <li>{{ note }}</li>
-      {% endfor %}
-    </ul>
+    <div class="notes-block">
+      <ul>
+        {% for note in outfit.notes %}
+          <li>{{ note }}</li>
+        {% endfor %}
+      </ul>
+    </div>
   {% endif %}
 {% endblock %}

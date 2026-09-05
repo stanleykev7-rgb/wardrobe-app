@@ -30,10 +30,39 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+CATEGORY_ORDER = [
+    ("needs_review", "Needs review"),
+    ("top", "Tops"),
+    ("bottom", "Bottoms"),
+    ("feet", "Feet"),
+    ("head", "Head"),
+]
+
+
+def group_closet_by_category(closet: list) -> list:
+    """Groups items for the collapsible-sections UI: anything flagged
+    needs_review goes in its own bucket regardless of zone (so it's easy
+    to find and fix), everything else is grouped by zone."""
+    buckets = {key: [] for key, _ in CATEGORY_ORDER}
+    for item in closet:
+        if item.get("needs_review"):
+            buckets["needs_review"].append(item)
+        else:
+            zone = item.get("zone", "top")
+            buckets.setdefault(zone, []).append(item)
+
+    return [
+        {"key": key, "label": label, "garments": buckets[key]}
+        for key, label in CATEGORY_ORDER
+        if buckets[key]
+    ]
+
+
 @app.route("/")
 def index():
     closet = load_closet()
-    return render_template("index.html", closet=closet)
+    categories = group_closet_by_category(closet)
+    return render_template("index.html", categories=categories, closet_count=len(closet))
 
 
 @app.route("/upload", methods=["POST"])
