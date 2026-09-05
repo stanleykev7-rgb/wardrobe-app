@@ -9,12 +9,15 @@
     {% if weather.rain %} · ☔ Rain expected{% endif %}
   </div>
 
-  <form action="{{ url_for('suggest') }}" method="get">
+  <form action="{{ url_for('suggest') }}" method="get" class="show-loading-form" data-loading-message="Checking today's weather and styling an outfit…">
     <input type="text" name="city" placeholder="City,CountryCode e.g. Kochi,IN" value="{{ city }}">
     <input type="submit" value="Update">
   </form>
 
   <h2>Recommended</h2>
+  {% if outfit.reasoning %}
+    <div class="card reasoning-card">💬 {{ outfit.reasoning }}</div>
+  {% endif %}
   <div class="grid">
     {% for zone, item in outfit.picks.items() %}
       {% if item %}

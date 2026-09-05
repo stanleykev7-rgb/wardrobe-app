@@ -2,32 +2,152 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Wardrobe{% endblock %}</title>
   <style>
-    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #fafafa; color: #222; }
-    h1 { font-size: 1.6rem; }
-    nav a { margin-right: 16px; text-decoration: none; color: #2563eb; font-weight: 600; }
-    .flash { background: #fef3c7; border: 1px solid #f59e0b; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; }
-    .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    :root {
+      --accent: #4f46e5;
+      --accent-dark: #4338ca;
+      --bg: #f7f7fb;
+      --card-bg: #ffffff;
+      --border: #e5e7eb;
+      --text: #1f2937;
+      --text-muted: #6b7280;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 0 20px 60px;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    h1 { font-size: 1.7rem; margin: 28px 0 6px; }
+    h2 { font-size: 1.15rem; margin: 24px 0 10px; color: var(--text); }
+    h3 { font-size: 1rem; margin: 20px 0 8px; color: var(--text-muted); }
+
+    nav {
+      display: flex;
+      gap: 4px;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    nav a {
+      text-decoration: none;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      transition: background 0.15s, color 0.15s;
+    }
+    nav a:hover { background: #eef2ff; color: var(--accent); }
+
+    .flash {
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      transition: box-shadow 0.15s;
+    }
+    .reasoning-card {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+      color: #3730a3;
+      font-size: 0.92rem;
+    }
+
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
-    .item img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; }
     .item { font-size: 0.85rem; }
-    .badge { display: inline-block; background: #eef2ff; color: #4338ca; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; margin-top: 4px; }
+    .item:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .item img { width: 100%; height: 140px; object-fit: cover; border-radius: 10px; margin-bottom: 8px; }
+
+    .badge { display: inline-block; background: #eef2ff; color: var(--accent-dark); padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; margin-top: 4px; margin-right: 4px; }
     .badge-warn { background: #fef3c7; color: #92400e; }
+
     .edit-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-    .edit-form input[type=text], .edit-form select, .edit-form input[type=number] { padding: 6px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.85rem; }
-    .edit-form input[type=submit] { padding: 6px; font-size: 0.85rem; }
+    .edit-form input[type=text], .edit-form select, .edit-form input[type=number] {
+      padding: 7px 8px; border-radius: 7px; border: 1px solid var(--border); font-size: 0.85rem;
+    }
+    .edit-form input[type=submit] { padding: 7px; font-size: 0.85rem; }
+
     .link-btn { background: none; border: none; color: #ef4444; font-size: 0.75rem; cursor: pointer; padding: 4px 0; text-decoration: underline; }
     .delete-form { margin-top: 4px; }
-    form.upload { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px; text-align: center; }
-    button, input[type=submit] { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-    input[type=text] { padding: 8px; border-radius: 8px; border: 1px solid #cbd5e1; }
+
+    form.upload {
+      border: 2px dashed #c7d2fe;
+      border-radius: 16px;
+      padding: 28px 20px;
+      text-align: center;
+      background: #fafaff;
+    }
+    form.upload p { color: var(--text-muted); margin-top: 0; }
+
+    button, input[type=submit] {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    button:hover, input[type=submit]:hover { background: var(--accent-dark); }
+    button:disabled, input[type=submit]:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    input[type=text], input[type=file] {
+      padding: 9px 10px; border-radius: 9px; border: 1px solid var(--border); font-size: 0.9rem;
+    }
+
+    /* --- Loading overlay --- */
+    #loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.85);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 14px;
+    }
+    #loading-overlay.visible { display: flex; }
+    .spinner {
+      width: 38px; height: 38px;
+      border: 4px solid #e0e7ff;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    #loading-message { color: var(--text-muted); font-size: 0.9rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div id="loading-message">Loading…</div>
+  </div>
+
   <nav>
     <a href="{{ url_for('index') }}">Closet</a>
-    <a href="{{ url_for('suggest') }}">Suggest outfit</a>
+    <a href="{{ url_for('suggest') }}" class="show-loading-link" data-loading-message="Checking today's weather and styling an outfit…">Suggest outfit</a>
   </nav>
   {% with messages = get_flashed_messages() %}
     {% if messages %}
@@ -37,5 +157,28 @@
     {% endif %}
   {% endwith %}
   {% block content %}{% endblock %}
+
+  <script>
+    function showLoadingOverlay(message) {
+      const overlay = document.getElementById('loading-overlay');
+      const msgEl = document.getElementById('loading-message');
+      if (message) msgEl.textContent = message;
+      overlay.classList.add('visible');
+    }
+
+    document.querySelectorAll('a.show-loading-link').forEach(function (link) {
+      link.addEventListener('click', function () {
+        showLoadingOverlay(link.dataset.loadingMessage || 'Loading…');
+      });
+    });
+
+    document.querySelectorAll('form.show-loading-form').forEach(function (form) {
+      form.addEventListener('submit', function () {
+        showLoadingOverlay(form.dataset.loadingMessage || 'Working on it…');
+        const btn = form.querySelector('button, input[type=submit]');
+        if (btn) btn.disabled = true;
+      });
+    });
+  </script>
 </body>
 </html>

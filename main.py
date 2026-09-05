@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from groq_classifier import classify_garment, ClassificationFailed
 from weather import get_current_weather
 from recommend import suggest_outfit
+from outfit_ai import suggest_outfit_ai, OutfitAIFailed
 from closet_store import load_closet, save_item, update_item, delete_item
 from image_utils import process_image
 import storage_supabase
@@ -148,7 +149,11 @@ def suggest():
         flash("Your closet is empty — upload some clothes first.")
         return redirect(url_for("index"))
 
-    outfit = suggest_outfit(closet, weather)
+    try:
+        outfit = suggest_outfit_ai(closet, weather)
+    except OutfitAIFailed:
+        outfit = suggest_outfit(closet, weather)
+        outfit["notes"] = outfit.get("notes", []) + ["Styling suggestion unavailable right now — showing closest-warmth picks instead."]
 
     return render_template("suggest.html", weather=weather, outfit=outfit, city=city)
 

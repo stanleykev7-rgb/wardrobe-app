@@ -3,7 +3,7 @@
 {% block content %}
   <h1>My Closet</h1>
 
-  <form class="upload" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+  <form class="upload show-loading-form" data-loading-message="Uploading photo and identifying the garment…" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
     <p>Snap or upload a photo of one garment at a time — Groq will identify it automatically.</p>
     <input type="file" name="photo" accept="image/*" required>
     <br><br>
