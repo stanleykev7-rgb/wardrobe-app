@@ -70,15 +70,20 @@ def pick_for_zone_with_variety(closet: list, zone: str, target: int, need_waterp
 def plan_days(closet: list, forecast_days: list, bias: int = 0) -> list:
     """
     Given a list of daily weather summaries (from weather.get_forecast),
-    plans one outfit per day using the variety-aware picker, avoiding
-    repeating the previous day's pick in each zone where an alternative
-    exists. Used by both the weekly view and the packing list generator
-    so they share one tested implementation.
+    plans one outfit per day. Unlike a simple "avoid yesterday" rule, this
+    tracks how many times each item has been used ACROSS THE WHOLE WEEK
+    so far and always prefers whichever reasonable candidate has been used
+    least - so a 5-day plan rotates through everything appropriate in your
+    closet before it repeats anything, not just avoiding immediate repeats.
+
+    A final pass also checks for any two days that ended up with the
+    IDENTICAL full outfit (all four zones matching) and swaps one zone to
+    break the duplicate, if an alternative exists.
 
     Returns: [{"date": str, "weather": dict, "picks": {zone: item_or_None}}, ...]
     """
     days = []
-    previous_picks = {"top": None, "bottom": None, "feet": None, "head": None}
+    usage_count = {"top": {}, "bottom": {}, "feet": {}, "head": {}}
 
     for day_weather in forecast_days:
         temp = day_weather.get("feels_like_c", day_weather.get("temp_c", 20))
@@ -87,13 +92,46 @@ def plan_days(closet: list, forecast_days: list, bias: int = 0) -> list:
 
         picks = {}
         for zone in ZONES_REQUIRED + ZONES_OPTIONAL:
-            avoid_id = previous_picks[zone]["id"] if previous_picks[zone] else None
-            picks[zone] = pick_for_zone_with_variety(closet, zone, target, need_waterproof, avoid_id=avoid_id)
-        previous_picks = picks
+            candidates = candidates_for_zone(closet, zone, target, need_waterproof, limit=8)
+            if not candidates:
+                picks[zone] = None
+                continue
+            # candidates is already sorted by closeness-to-target; among
+            # ties on usage count, min() keeps that ordering, so we still
+            # favor better-fitting items among equally-unused ones.
+            best = min(candidates, key=lambda c: usage_count[zone].get(c["id"], 0))
+            picks[zone] = best
+            usage_count[zone][best["id"]] = usage_count[zone].get(best["id"], 0) + 1
 
         days.append({"date": day_weather["date"], "weather": day_weather, "picks": picks})
 
+    _break_duplicate_combos(days, closet, bias)
     return days
+
+
+def _break_duplicate_combos(days: list, closet: list, bias: int) -> None:
+    """Mutates `days` in place: if two days ended up with the exact same
+    four-zone combo, swaps one zone on the later day to a fresh candidate
+    if one exists. A best-effort pass, not a hard guarantee - a very small
+    closet may simply not have enough variety to avoid all repeats."""
+    seen_combos = set()
+    for day in days:
+        combo = tuple(
+            day["picks"][z]["id"] if day["picks"][z] else None
+            for z in ("top", "bottom", "feet", "head")
+        )
+        if combo in seen_combos:
+            temp = day["weather"].get("feels_like_c", day["weather"].get("temp_c", 20))
+            target = target_warmth(temp, bias)
+            need_waterproof = day["weather"].get("rain", False)
+            for zone in ZONES_REQUIRED + ZONES_OPTIONAL:
+                current = day["picks"][zone]
+                candidates = candidates_for_zone(closet, zone, target, need_waterproof, limit=8)
+                alt = next((c for c in candidates if not current or c["id"] != current["id"]), None)
+                if alt:
+                    day["picks"][zone] = alt
+                    break
+        seen_combos.add(combo)
 
 
 def suggest_outfit(closet: list, weather: dict, bias: int = 0) -> dict:
