@@ -154,6 +154,33 @@ instance) from going idle:
    manually any time from the repo's **Actions** tab → **Keep Supabase and
    Render awake** → **Run workflow**, useful for testing it works.
 
+## 9. Database migrations for this update (occasion tags, outfit history)
+
+This update adds occasion tagging and outfit history/weekly planning, which
+need two changes in Supabase's SQL Editor:
+
+```sql
+-- Add occasion tagging to existing items
+alter table items add column if not exists occasion text default 'casual';
+
+-- New table for logged outfit history
+create table if not exists outfit_history (
+  log_date date primary key,
+  occasion text,
+  top_id text,
+  bottom_id text,
+  feet_id text,
+  head_id text,
+  reasoning text,
+  temp_c numeric,
+  condition text,
+  created_at timestamptz default now()
+);
+```
+
+Run both, then redeploy - no new environment variables are needed, this
+reuses your existing Supabase credentials.
+
 ## Notes and next steps
 
 - **The recommendation logic is rule-based** (closest warmth score per

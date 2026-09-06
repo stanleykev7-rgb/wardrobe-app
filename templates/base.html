@@ -77,6 +77,33 @@
       width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper);
       cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); flex-shrink: 0;
     }
+    @media (max-width: 480px) {
+      .tabs a { padding: 6px 10px; font-size: 0.78rem; }
+      .brand { font-size: 1.3rem; }
+    }
+
+    .filter-row { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .filter-row select { padding: 9px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-family: 'IBM Plex Sans', sans-serif; font-size: 0.85rem; }
+
+    /* --- Weekly view --- */
+    .day-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+    .day-card { background: var(--card); border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px var(--shadow); }
+    .day-card .day-label { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 500; margin: 0 0 4px; }
+    .day-card .day-temp { font-size: 0.8rem; color: var(--ink-soft); margin-bottom: 10px; }
+    .day-thumbs { display: flex; flex-direction: column; gap: 6px; }
+    .day-thumb { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; }
+    .day-thumb img { width: 34px; height: 34px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+    .day-thumb .empty-thumb { width: 34px; height: 34px; border-radius: 6px; border: 1px dashed var(--line); flex-shrink: 0; }
+
+    /* --- History view --- */
+    .history-entry { background: var(--card); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px var(--shadow); }
+    .history-date { font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 500; margin: 0 0 2px; }
+    .history-meta { font-size: 0.78rem; color: var(--ink-soft); margin-bottom: 10px; }
+    .history-thumbs { display: flex; gap: 10px; flex-wrap: wrap; }
+    .history-thumb { text-align: center; font-size: 0.7rem; color: var(--ink-soft); }
+    .history-thumb img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; display: block; margin-bottom: 4px; }
+    .history-thumb .removed-thumb { width: 56px; height: 56px; border-radius: 8px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; font-size: 0.6rem; margin-bottom: 4px; }
+    .log-btn-row { margin-top: 16px; }
 
     .flash {
       background: var(--note-bg); border: 1px solid var(--note-border); color: var(--note-text);
@@ -210,6 +237,33 @@
     .spinner { width: 34px; height: 34px; border: 4px solid var(--indigo-tint); border-top-color: var(--indigo); border-radius: 50%; animation: spin 0.8s linear infinite; }
     #loading-message { color: var(--ink-soft); font-size: 0.85rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* --- Animated weather icons --- */
+    .weather-icon-wrap { display: inline-flex; align-items: center; vertical-align: middle; margin-right: 8px; }
+    .wi-sun-rays { animation: wi-rotate 12s linear infinite; }
+    @keyframes wi-rotate { to { transform: rotate(360deg); } }
+    .wi-cloud-back { animation: wi-drift-back 8s ease-in-out infinite; }
+    .wi-cloud-front { animation: wi-drift-front 6s ease-in-out infinite; }
+    @keyframes wi-drift-back { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+    @keyframes wi-drift-front { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-4px); } }
+    .wi-raindrops line { animation: wi-fall 0.9s linear infinite; }
+    .wi-raindrops line:nth-child(2) { animation-delay: 0.3s; }
+    .wi-raindrops line:nth-child(3) { animation-delay: 0.6s; }
+    @keyframes wi-fall { 0% { opacity: 0; transform: translateY(-4px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(6px); } }
+    .wi-bolt { animation: wi-flash 1.6s ease-in-out infinite; transform-origin: 28px 28px; }
+    @keyframes wi-flash { 0%, 80%, 100% { opacity: 1; } 85%, 95% { opacity: 0.25; } }
+    .wi-snowflakes circle { animation: wi-snowfall 2.4s ease-in-out infinite; }
+    .wi-snowflakes circle:nth-child(2) { animation-delay: 0.5s; }
+    .wi-snowflakes circle:nth-child(3) { animation-delay: 1s; }
+    @keyframes wi-snowfall { 0%, 100% { transform: translateY(0); opacity: 0.6; } 50% { transform: translateY(4px); opacity: 1; } }
+    .wi-mist line { animation: wi-mist-drift 3.5s ease-in-out infinite; }
+    .wi-mist line:nth-child(2) { animation-delay: 0.4s; }
+    .wi-mist line:nth-child(3) { animation-delay: 0.8s; }
+    @keyframes wi-mist-drift { 0%, 100% { transform: translateX(0); opacity: 0.7; } 50% { transform: translateX(4px); opacity: 1; } }
+
+    /* --- Outfit mannequin --- */
+    .mannequin-wrap { display: flex; justify-content: center; padding: 10px 0 4px; }
+    .mannequin-empty-zone { stroke: var(--ink-soft); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.5; }
   </style>
 </head>
 <body>
@@ -227,7 +281,9 @@
     <div class="topbar-right">
       <div class="tabs">
         <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Closet</a>
-        <a href="{{ url_for('suggest') }}" class="show-loading-link {{ 'active' if request.endpoint == 'suggest' }}" data-loading-message="Checking today's weather and styling an outfit…">Today's outfit</a>
+        <a href="{{ url_for('suggest') }}" class="show-loading-link {{ 'active' if request.endpoint == 'suggest' }}" data-loading-message="Checking today's weather and styling an outfit…">Today</a>
+        <a href="{{ url_for('week') }}" class="show-loading-link {{ 'active' if request.endpoint == 'week' }}" data-loading-message="Pulling the forecast and planning outfits…">This week</a>
+        <a href="{{ url_for('history') }}" class="{{ 'active' if request.endpoint == 'history' }}">History</a>
       </div>
       <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" type="button">
         <svg id="theme-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">

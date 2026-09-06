@@ -1,17 +1,20 @@
 import os
-import json
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 
 from flask import Flask, request, render_template, redirect, url_for, flash
 from dotenv import load_dotenv
 
 from groq_classifier import classify_garment, ClassificationFailed
-from weather import get_current_weather
+from weather import get_current_weather, get_forecast
+import recommend
 from recommend import suggest_outfit
 from outfit_ai import suggest_outfit_ai, OutfitAIFailed
 from closet_store import load_closet, save_item, update_item, delete_item
+from history_store import log_outfit, get_history
 from image_utils import process_image
+from weather_icons import weather_icon_svg
+from mannequin import mannequin_svg
 import storage_supabase
 
 load_dotenv()
@@ -28,6 +31,21 @@ os.makedirs(TMP_DIR, exist_ok=True)
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+VALID_OCCASIONS = ("casual", "work", "formal", "gym")
+
+
+def filter_by_occasion(closet: list, occasion: str) -> tuple:
+    """Returns (filtered_closet, note_or_None). Falls back to the full
+    closet with an explanatory note if filtering would leave nothing to
+    suggest from, rather than dead-ending on an empty result."""
+    if not occasion or occasion == "any":
+        return closet, None
+    filtered = [i for i in closet if i.get("occasion", "casual") == occasion]
+    if not filtered:
+        return closet, f"No {occasion} items found in your closet — showing suggestions from your full closet instead."
+    return filtered, None
 
 
 CATEGORY_ORDER = [
@@ -102,11 +120,11 @@ def upload():
         attrs = classify_garment(processed_path)
         needs_review = False
     except ClassificationFailed:
-        attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False}
+        attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasion": "casual"}
         needs_review = True
     except Exception as e:
         flash(f"Unexpected error during classification: {e}")
-        attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False}
+        attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasion": "casual"}
         needs_review = True
 
     # Then upload the same local file to Supabase Storage and clean up.
@@ -129,6 +147,7 @@ def upload():
         "warmth": attrs.get("warmth", 5),
         "zone": attrs.get("zone", "top"),
         "waterproof": attrs.get("waterproof", False),
+        "occasion": attrs.get("occasion", "casual"),
         "needs_review": needs_review,
         "added_at": datetime.utcnow().isoformat(),
     }
@@ -149,6 +168,7 @@ def edit_item(item_id):
         "zone": request.form.get("zone") if request.form.get("zone") in ("head", "top", "bottom", "feet") else "top",
         "warmth": max(1, min(10, int(request.form.get("warmth", 5) or 5))),
         "waterproof": request.form.get("waterproof") == "on",
+        "occasion": request.form.get("occasion") if request.form.get("occasion") in VALID_OCCASIONS else "casual",
         "needs_review": False,
     }
     update_item(item_id, updates)
@@ -166,6 +186,7 @@ def delete_item_route(item_id):
 @app.route("/suggest")
 def suggest():
     city = request.args.get("city", os.environ.get("DEFAULT_CITY", "Kochi,IN"))
+    occasion = request.args.get("occasion", "any")
 
     try:
         weather = get_current_weather(city)
@@ -178,13 +199,97 @@ def suggest():
         flash("Your closet is empty — upload some clothes first.")
         return redirect(url_for("index"))
 
+    filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
+
     try:
-        outfit = suggest_outfit_ai(closet, weather)
+        outfit = suggest_outfit_ai(filtered_closet, weather)
     except OutfitAIFailed:
-        outfit = suggest_outfit(closet, weather)
+        outfit = suggest_outfit(filtered_closet, weather)
         outfit["notes"] = outfit.get("notes", []) + ["Styling suggestion unavailable right now — showing closest-warmth picks instead."]
 
-    return render_template("suggest.html", weather=weather, outfit=outfit, city=city)
+    if occasion_note:
+        outfit["notes"] = [occasion_note] + outfit.get("notes", [])
+
+    return render_template(
+        "suggest.html", weather=weather, outfit=outfit, city=city, occasion=occasion,
+        weather_icon=weather_icon_svg(weather.get("condition", "")),
+        mannequin=mannequin_svg(outfit["picks"]),
+    )
+
+
+@app.route("/log-outfit", methods=["POST"])
+def log_outfit_route():
+    entry = {
+        "log_date": date.today().isoformat(),
+        "occasion": request.form.get("occasion") if request.form.get("occasion") in VALID_OCCASIONS else "casual",
+        "top_id": request.form.get("top_id") or None,
+        "bottom_id": request.form.get("bottom_id") or None,
+        "feet_id": request.form.get("feet_id") or None,
+        "head_id": request.form.get("head_id") or None,
+        "reasoning": request.form.get("reasoning") or None,
+        "temp_c": request.form.get("temp_c") or None,
+        "condition": request.form.get("condition") or None,
+    }
+    try:
+        log_outfit(entry)
+        flash("Logged today's outfit.")
+    except Exception as e:
+        flash(f"Could not log outfit: {e}")
+    return redirect(url_for("suggest", city=request.form.get("city", "")))
+
+
+@app.route("/history")
+def history():
+    entries = get_history()
+    closet_by_id = {item["id"]: item for item in load_closet()}
+
+    for entry in entries:
+        for zone in ("top", "bottom", "feet", "head"):
+            item_id = entry.get(f"{zone}_id")
+            entry[f"{zone}_item"] = closet_by_id.get(item_id) if item_id else None
+
+    return render_template("history.html", entries=entries)
+
+
+@app.route("/week")
+def week():
+    city = request.args.get("city", os.environ.get("DEFAULT_CITY", "Kochi,IN"))
+    occasion = request.args.get("occasion", "any")
+
+    try:
+        forecast_days = get_forecast(city, days=5)
+    except Exception as e:
+        flash(f"Could not fetch forecast: {e}")
+        return redirect(url_for("index"))
+
+    closet = load_closet()
+    if not closet:
+        flash("Your closet is empty — upload some clothes first.")
+        return redirect(url_for("index"))
+
+    filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
+
+    days = []
+    previous_picks = {"top": None, "bottom": None, "feet": None, "head": None}
+    for day_weather in forecast_days:
+        temp = day_weather.get("feels_like_c", day_weather.get("temp_c", 20))
+        target = recommend.target_warmth(temp)
+        need_waterproof = day_weather.get("rain", False)
+
+        picks = {}
+        for zone in recommend.ZONES_REQUIRED + recommend.ZONES_OPTIONAL:
+            avoid_id = previous_picks[zone]["id"] if previous_picks[zone] else None
+            picks[zone] = recommend.pick_for_zone_with_variety(filtered_closet, zone, target, need_waterproof, avoid_id=avoid_id)
+        previous_picks = picks
+
+        days.append({
+            "date": day_weather["date"],
+            "weather": day_weather,
+            "picks": picks,
+            "weather_icon": weather_icon_svg(day_weather.get("condition", "")),
+        })
+
+    return render_template("week.html", days=days, city=city, occasion=occasion, occasion_note=occasion_note)
 
 
 @app.route("/keep-alive")

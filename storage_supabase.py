@@ -89,3 +89,24 @@ def ping() -> None:
     activity and prevent the free-tier project from auto-pausing."""
     client = get_client()
     client.table("items").select("id").limit(1).execute()
+
+
+# ---- Outfit history (real Postgres table via PostgREST) ----
+
+def save_history_entry(entry: dict) -> None:
+    """Upserts on log_date - logging the same day twice updates that
+    day's entry instead of creating a duplicate."""
+    client = get_client()
+    client.table("outfit_history").upsert(entry, on_conflict="log_date").execute()
+
+
+def load_history(limit: int = 60) -> list:
+    client = get_client()
+    result = (
+        client.table("outfit_history")
+        .select("*")
+        .order("log_date", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data

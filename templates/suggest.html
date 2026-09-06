@@ -2,12 +2,22 @@
 {% block title %}Today's Outfit{% endblock %}
 {% block content %}
 
-  <p class="weather-line">It's currently <strong>{{ weather.temp_c }}°C</strong> in <strong>{{ weather.city }}</strong>, feeling like {{ weather.feels_like_c }}°, under {{ weather.condition|lower }} skies{% if weather.rain %} with rain expected{% endif %}.</p>
+  <p class="weather-line">
+    <span class="weather-icon-wrap">{{ weather_icon|safe }}</span>
+    It's currently <strong>{{ weather.temp_c }}°C</strong> in <strong>{{ weather.city }}</strong>, feeling like {{ weather.feels_like_c }}°, under {{ weather.condition|lower }} skies{% if weather.rain %} with rain expected{% endif %}.
+  </p>
 
-  <form action="{{ url_for('suggest') }}" method="get" class="show-loading-form" data-loading-message="Checking today's weather and styling an outfit…" style="margin-bottom: 20px; display: flex; gap: 8px;">
+  <form action="{{ url_for('suggest') }}" method="get" class="show-loading-form filter-row" data-loading-message="Checking today's weather and styling an outfit…">
     <input type="text" name="city" placeholder="City,CountryCode e.g. Kochi,IN" value="{{ city }}">
+    <select name="occasion">
+      {% for o in ['any', 'casual', 'work', 'formal', 'gym'] %}
+        <option value="{{ o }}" {{ 'selected' if occasion == o }}>{{ 'Any occasion' if o == 'any' else o|capitalize }}</option>
+      {% endfor %}
+    </select>
     <input type="submit" value="Update">
   </form>
+
+  <div class="mannequin-wrap">{{ mannequin|safe }}</div>
 
   <div class="flatlay">
     {% if outfit.picks.top %}
@@ -52,4 +62,19 @@
       </ul>
     </div>
   {% endif %}
+
+  <div class="log-btn-row">
+    <form action="{{ url_for('log_outfit_route') }}" method="post">
+      <input type="hidden" name="city" value="{{ city }}">
+      <input type="hidden" name="occasion" value="{{ occasion if occasion != 'any' else 'casual' }}">
+      <input type="hidden" name="top_id" value="{{ outfit.picks.top.id if outfit.picks.top }}">
+      <input type="hidden" name="bottom_id" value="{{ outfit.picks.bottom.id if outfit.picks.bottom }}">
+      <input type="hidden" name="feet_id" value="{{ outfit.picks.feet.id if outfit.picks.feet }}">
+      <input type="hidden" name="head_id" value="{{ outfit.picks.head.id if outfit.picks.head }}">
+      <input type="hidden" name="reasoning" value="{{ outfit.reasoning or '' }}">
+      <input type="hidden" name="temp_c" value="{{ weather.temp_c }}">
+      <input type="hidden" name="condition" value="{{ weather.condition }}">
+      <input type="submit" value="Log today's outfit">
+    </form>
+  </div>
 {% endblock %}

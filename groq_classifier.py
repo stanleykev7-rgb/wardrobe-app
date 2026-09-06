@@ -26,7 +26,8 @@ Identify it and respond with ONLY a JSON object (no markdown, no extra text) wit
   "color": "dominant color, e.g. 'navy blue'",
   "zone": "one of: head, top, bottom, feet",
   "warmth": integer from 1 (very light/summer) to 10 (very warm/heavy winter),
-  "waterproof": true or false
+  "waterproof": true or false,
+  "occasion": "one of: casual, work, formal, gym"
 }
 
 Rules:
@@ -36,6 +37,9 @@ Rules:
 - If it's worn on the head (hat, beanie, cap) use "head".
 - If it's footwear (shoes, boots, sandals) use "feet".
 - "warmth" should reflect how much insulation the item provides, not just its color.
+- "occasion": "work" for business/office wear (blazers, dress shirts, slacks), "formal" for
+  suits/dresses/formal shoes, "gym" for athletic wear (leggings, sneakers, sports tops),
+  "casual" for everyday wear - default to "casual" if genuinely unclear.
 - If you cannot clearly identify the garment, make your best guess rather than refusing.
 """
 
@@ -122,6 +126,10 @@ def _sanitize(data: dict) -> dict:
     if zone not in ("head", "top", "bottom", "feet"):
         zone = "top"
 
+    occasion = str(data.get("occasion", "casual")).lower()
+    if occasion not in ("casual", "work", "formal", "gym"):
+        occasion = "casual"
+
     try:
         warmth = int(data.get("warmth", 5))
     except (TypeError, ValueError):
@@ -134,4 +142,5 @@ def _sanitize(data: dict) -> dict:
         "zone": zone,
         "warmth": warmth,
         "waterproof": bool(data.get("waterproof", False)),
+        "occasion": occasion,
     }

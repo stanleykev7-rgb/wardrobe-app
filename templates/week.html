@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}This Week{% endblock %}
+{% block content %}
+
+  <h2 class="section-title">Outfit plan for the next {{ days|length }} days</h2>
+
+  <form action="{{ url_for('week') }}" method="get" class="show-loading-form filter-row" data-loading-message="Pulling the forecast and planning outfits…">
+    <input type="text" name="city" placeholder="City,CountryCode e.g. Kochi,IN" value="{{ city }}">
+    <select name="occasion">
+      {% for o in ['any', 'casual', 'work', 'formal', 'gym'] %}
+        <option value="{{ o }}" {{ 'selected' if occasion == o }}>{{ 'Any occasion' if o == 'any' else o|capitalize }}</option>
+      {% endfor %}
+    </select>
+    <input type="submit" value="Update">
+  </form>
+
+  {% if occasion_note %}<div class="notes-block" style="margin-bottom:20px;">{{ occasion_note }}</div>{% endif %}
+
+  <div class="day-grid">
+    {% for day in days %}
+      <div class="day-card">
+        <p class="day-label">{{ day.date }}</p>
+        <div class="weather-icon-wrap" style="transform: scale(0.6); transform-origin: left center;">{{ day.weather_icon|safe }}</div>
+        <p class="day-temp">{{ day.weather.temp_min|round(1) }}–{{ day.weather.temp_max|round(1) }}°C · {{ day.weather.condition }}</p>
+        <div class="day-thumbs">
+          {% for zone in ['top', 'bottom', 'feet', 'head'] %}
+            {% set item = day.picks[zone] %}
+            <div class="day-thumb">
+              {% if item %}
+                <img src="{{ item.image_url }}" alt="{{ item.type }}">
+                <span>{{ item.color }} {{ item.type }}</span>
+              {% else %}
+                <div class="empty-thumb"></div>
+                <span>—</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

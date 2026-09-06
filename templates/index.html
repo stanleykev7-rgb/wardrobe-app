@@ -42,6 +42,7 @@
                   <div class="tag-specs">
                     <div class="tag-spec-row"><span class="tag-spec-label">Zone</span><span class="tag-spec-val">{{ item.zone|capitalize }}</span></div>
                     <div class="tag-spec-row"><span class="tag-spec-label">Warmth</span><span class="tag-spec-val">{{ item.warmth }} / 10</span></div>
+                    <div class="tag-spec-row"><span class="tag-spec-label">Occasion</span><span class="tag-spec-val">{{ (item.occasion or 'casual')|capitalize }}</span></div>
                     {% if item.waterproof %}<div class="tag-spec-row"><span class="tag-spec-label">Waterproof</span><span class="tag-spec-val">Yes</span></div>{% endif %}
                   </div>
 
@@ -68,6 +69,14 @@
                         <input type="range" name="warmth" min="1" max="10" value="{{ item.warmth }}" oninput="this.nextElementSibling.textContent=this.value">
                         <span class="warmth-val">{{ item.warmth }}</span>
                       </div>
+                    </div>
+                    <div>
+                      <label>Occasion</label>
+                      <select name="occasion">
+                        {% for o in ['casual', 'work', 'formal', 'gym'] %}
+                          <option value="{{ o }}" {{ 'selected' if (item.occasion or 'casual') == o }}>{{ o|capitalize }}</option>
+                        {% endfor %}
+                      </select>
                     </div>
                     <label class="waterproof-row">
                       <input type="checkbox" name="waterproof" {{ 'checked' if item.waterproof }}> Waterproof

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Outfit History{% endblock %}
+{% block content %}
+
+  <h2 class="section-title">Past outfits</h2>
+
+  {% if entries %}
+    {% for entry in entries %}
+      <div class="history-entry">
+        <p class="history-date">{{ entry.log_date }}</p>
+        <p class="history-meta">
+          {{ (entry.occasion or 'casual')|capitalize }}
+          {% if entry.temp_c %} · {{ entry.temp_c }}°C{% endif %}
+          {% if entry.condition %}, {{ entry.condition|lower }}{% endif %}
+        </p>
+        <div class="history-thumbs">
+          {% for zone in ['top', 'bottom', 'feet', 'head'] %}
+            {% set item = entry[zone ~ '_item'] %}
+            {% set had_id = entry[zone ~ '_id'] %}
+            {% if item %}
+              <div class="history-thumb">
+                <img src="{{ item.image_url }}" alt="{{ item.type }}">
+                {{ item.type }}
+              </div>
+            {% elif had_id %}
+              <div class="history-thumb">
+                <div class="removed-thumb">Removed</div>
+                item deleted
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% if entry.reasoning %}
+          <div class="stylist-label" style="margin-top:10px; color: var(--ink-soft);">"{{ entry.reasoning }}"</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p>No outfits logged yet — visit <a href="{{ url_for('suggest') }}">Today's outfit</a> and log one.</p>
+  {% endif %}
+{% endblock %}

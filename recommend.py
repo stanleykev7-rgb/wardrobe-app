@@ -45,6 +45,21 @@ def candidates_for_zone(closet: list, zone: str, target: int, need_waterproof: b
     return candidates[:limit]
 
 
+def pick_for_zone_with_variety(closet: list, zone: str, target: int, need_waterproof: bool, avoid_id: str = None):
+    """Same idea as candidates_for_zone, but for the weekly view: prefers
+    an item other than `avoid_id` (typically the previous day's pick for
+    this zone) when an equally-reasonable alternative exists, so a 5-day
+    plan doesn't suggest the identical top three days running."""
+    candidates = candidates_for_zone(closet, zone, target, need_waterproof, limit=3)
+    if not candidates:
+        return None
+    if avoid_id:
+        alternatives = [c for c in candidates if c["id"] != avoid_id]
+        if alternatives:
+            return alternatives[0]
+    return candidates[0]
+
+
 def suggest_outfit(closet: list, weather: dict) -> dict:
     """
     closet: list of item dicts (see closet_store)
