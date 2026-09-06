@@ -29,6 +29,7 @@
             {% for item in cat.garments %}
               <div class="tag">
                 {% if item.needs_review %}<div class="needs-review-flag">Needs review</div>{% endif %}
+                {% if item.in_laundry %}<div class="laundry-flag">In laundry</div>{% endif %}
                 <div class="tag-photo"><img src="{{ item.image_url }}" alt="{{ item.type }}"></div>
                 <div class="tag-perf"></div>
                 <div class="tag-body">
@@ -43,6 +44,7 @@
                     <div class="tag-spec-row"><span class="tag-spec-label">Zone</span><span class="tag-spec-val">{{ item.zone|capitalize }}</span></div>
                     <div class="tag-spec-row"><span class="tag-spec-label">Warmth</span><span class="tag-spec-val">{{ item.warmth }} / 10</span></div>
                     <div class="tag-spec-row"><span class="tag-spec-label">Occasion</span><span class="tag-spec-val">{{ (item.occasion or 'casual')|capitalize }}</span></div>
+                    <div class="tag-spec-row"><span class="tag-spec-label">Worn</span><span class="tag-spec-val">{{ item.wear_count }}x{% if item.last_worn %} · last {{ item.last_worn }}{% endif %}</span></div>
                     {% if item.waterproof %}<div class="tag-spec-row"><span class="tag-spec-label">Waterproof</span><span class="tag-spec-val">Yes</span></div>{% endif %}
                   </div>
 
@@ -88,6 +90,13 @@
                   </form>
 
                   <div class="tag-footer">
+                    <form action="{{ url_for('toggle_laundry', item_id=item.id) }}" method="post">
+                      <input type="hidden" name="current" value="{{ 'true' if item.in_laundry else 'false' }}">
+                      <button type="submit" class="laundry-btn {{ 'active' if item.in_laundry }}" aria-label="Toggle in laundry">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="13" r="7"/><path d="M9 3h6M9 13a3 3 0 0 0 6 0"/></svg>
+                        {{ 'In laundry' if item.in_laundry else 'Mark as laundry' }}
+                      </button>
+                    </form>
                     <form action="{{ url_for('delete_item_route', item_id=item.id) }}" method="post" onsubmit="return confirm('Remove this item?')">
                       <button type="submit" class="delete-btn" aria-label="Remove" style="background:none;">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>

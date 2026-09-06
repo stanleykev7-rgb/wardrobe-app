@@ -37,13 +37,21 @@ Pick ONE item id per zone (or null if a zone has no good option) that:
 2. Looks coordinated together as a single outfit (colors/styles that work
    well as a combination, not just individually weather-appropriate).
 
+Then rate the resulting outfit's style on a scale of 1-10 (be genuine, not
+just generous - a plain but functional outfit might be a 6, a genuinely
+well-coordinated one an 8+) and write a short, fun verdict line about it,
+like a witty friend giving their honest opinion - not a dry technical
+assessment.
+
 Respond with ONLY a JSON object, no markdown, no extra text:
 {{
   "top": "<item id or null>",
   "bottom": "<item id or null>",
   "feet": "<item id or null>",
   "head": "<item id or null>",
-  "reasoning": "one short sentence on why these work together for today"
+  "reasoning": "one short sentence on why these work together for today",
+  "style_score": <integer 1-10>,
+  "verdict": "one short, fun sentence giving your honest take on the outfit's style"
 }}
 """
 
@@ -147,9 +155,19 @@ def suggest_outfit_ai(closet: list, weather: dict) -> dict:
 
     reasoning = str(data.get("reasoning", "")).strip() or None
 
+    try:
+        style_score = int(data.get("style_score"))
+        style_score = max(1, min(10, style_score))
+    except (TypeError, ValueError):
+        style_score = None
+
+    verdict = str(data.get("verdict", "")).strip() or None
+
     return {
         "picks": picks,
         "target_warmth": target,
         "notes": notes,
         "reasoning": reasoning,
+        "style_score": style_score,
+        "verdict": verdict,
     }

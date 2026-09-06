@@ -53,6 +53,13 @@
     {% endif %}
   </div>
 
+  {% if outfit.style_score %}
+    <div class="style-score-card">
+      <div class="style-score-num">{{ outfit.style_score }}<span>/10</span></div>
+      {% if outfit.verdict %}<div class="style-verdict">{{ outfit.verdict }}</div>{% endif %}
+    </div>
+  {% endif %}
+
   {% if outfit.notes %}
     <div class="notes-block">
       <ul>

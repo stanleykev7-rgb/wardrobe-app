@@ -31,8 +31,9 @@ def candidates_for_zone(closet: list, zone: str, target: int, need_waterproof: b
     """Returns up to `limit` items for a zone, sorted by closeness to the
     target warmth score. Used both by the plain rule-based picker (limit=1)
     and by outfit_ai.py, which wants a short-list of options to reason over
-    rather than a single forced pick."""
-    candidates = [i for i in closet if i.get("zone") == zone]
+    rather than a single forced pick. Items marked in_laundry are excluded
+    entirely - they're not available to wear right now."""
+    candidates = [i for i in closet if i.get("zone") == zone and not i.get("in_laundry")]
     if not candidates:
         return []
 
@@ -92,4 +93,6 @@ def suggest_outfit(closet: list, weather: dict) -> dict:
         "target_warmth": target,
         "notes": notes,
         "reasoning": None,
+        "style_score": None,
+        "verdict": None,
     }

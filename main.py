@@ -11,7 +11,7 @@ import recommend
 from recommend import suggest_outfit
 from outfit_ai import suggest_outfit_ai, OutfitAIFailed
 from closet_store import load_closet, save_item, update_item, delete_item
-from history_store import log_outfit, get_history
+from history_store import log_outfit, get_history, compute_wear_stats
 from image_utils import process_image
 from weather_icons import weather_icon_svg
 from mannequin import mannequin_svg
@@ -79,6 +79,16 @@ def group_closet_by_category(closet: list) -> list:
 @app.route("/")
 def index():
     closet = load_closet()
+
+    try:
+        wear_stats = compute_wear_stats(get_history())
+    except Exception:
+        wear_stats = {}  # history unavailable shouldn't block viewing the closet
+    for item in closet:
+        stats = wear_stats.get(item["id"])
+        item["wear_count"] = stats["count"] if stats else 0
+        item["last_worn"] = stats["last_worn"] if stats else None
+
     categories = group_closet_by_category(closet)
     return render_template("index.html", categories=categories, closet_count=len(closet))
 
@@ -148,6 +158,7 @@ def upload():
         "zone": attrs.get("zone", "top"),
         "waterproof": attrs.get("waterproof", False),
         "occasion": attrs.get("occasion", "casual"),
+        "in_laundry": False,
         "needs_review": needs_review,
         "added_at": datetime.utcnow().isoformat(),
     }
@@ -180,6 +191,13 @@ def edit_item(item_id):
 def delete_item_route(item_id):
     delete_item(item_id)
     flash("Item removed.")
+    return redirect(url_for("index"))
+
+
+@app.route("/item/<item_id>/toggle-laundry", methods=["POST"])
+def toggle_laundry(item_id):
+    currently_in_laundry = request.form.get("current") == "true"
+    update_item(item_id, {"in_laundry": not currently_in_laundry})
     return redirect(url_for("index"))
 
 

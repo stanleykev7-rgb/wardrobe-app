@@ -153,7 +153,16 @@
       position: absolute; top: 10px; left: 10px; background: var(--thread); color: var(--thread-tint);
       font-size: 0.65rem; font-weight: 600; padding: 3px 8px; border-radius: 999px; z-index: 2;
     }
-    .tag-footer { display: flex; justify-content: flex-end; margin-top: 8px; }
+    .laundry-flag {
+      position: absolute; top: 10px; right: 10px; background: var(--sage); color: var(--paper);
+      font-size: 0.65rem; font-weight: 600; padding: 3px 8px; border-radius: 999px; z-index: 2;
+    }
+    .tag-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 6px; }
+    .laundry-btn {
+      background: none !important; border: 1px solid var(--line) !important; color: var(--ink-soft) !important;
+      font-size: 0.68rem; font-weight: 500; padding: 4px 8px; border-radius: 8px; display: flex; align-items: center; gap: 4px;
+    }
+    .laundry-btn.active { background: var(--sage) !important; color: var(--paper) !important; border-color: var(--sage) !important; }
 
     /* --- Inline edit form --- */
     .tag-edit { display: none; flex-direction: column; gap: 8px; }
@@ -223,6 +232,14 @@
     .stylist-label { display: block; font-family: 'IBM Plex Sans', sans-serif; font-style: normal; font-size: 0.65rem; font-weight: 600; color: var(--thread); margin-bottom: 6px; }
     .notes-block { background: var(--thread-tint); border-radius: 12px; padding: 14px 16px; font-size: 0.85rem; color: var(--thread); }
     .notes-block ul { margin: 0; padding-left: 18px; }
+
+    .style-score-card {
+      display: flex; align-items: center; gap: 14px; background: var(--card); border-radius: 14px;
+      padding: 14px 18px; margin-bottom: 22px; box-shadow: 0 1px 3px var(--shadow);
+    }
+    .style-score-num { font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 600; color: var(--indigo); line-height: 1; }
+    .style-score-num span { font-size: 1rem; color: var(--ink-soft); font-weight: 400; }
+    .style-verdict { font-size: 0.88rem; color: var(--ink); }
 
     /* --- Loading overlay --- */
     #loading-overlay {
