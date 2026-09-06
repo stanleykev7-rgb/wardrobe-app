@@ -313,27 +313,73 @@ def week():
     except Exception:
         bias = 0
 
+    planned_days = recommend.plan_days(filtered_closet, forecast_days, bias=bias)
+
     days = []
-    previous_picks = {"top": None, "bottom": None, "feet": None, "head": None}
-    for day_weather in forecast_days:
-        temp = day_weather.get("feels_like_c", day_weather.get("temp_c", 20))
-        target = recommend.target_warmth(temp, bias)
-        need_waterproof = day_weather.get("rain", False)
-
-        picks = {}
-        for zone in recommend.ZONES_REQUIRED + recommend.ZONES_OPTIONAL:
-            avoid_id = previous_picks[zone]["id"] if previous_picks[zone] else None
-            picks[zone] = recommend.pick_for_zone_with_variety(filtered_closet, zone, target, need_waterproof, avoid_id=avoid_id)
-        previous_picks = picks
-
+    for planned_day in planned_days:
         days.append({
-            "date": day_weather["date"],
-            "weather": day_weather,
-            "picks": picks,
-            "weather_icon": weather_icon_svg(day_weather.get("condition", "")),
+            "date": planned_day["date"],
+            "weather": planned_day["weather"],
+            "picks": planned_day["picks"],
+            "weather_icon": weather_icon_svg(planned_day["weather"].get("condition", "")),
         })
 
     return render_template("week.html", days=days, city=city, occasion=occasion, occasion_note=occasion_note)
+
+
+@app.route("/packing-list")
+def packing_list():
+    city = request.args.get("city", os.environ.get("DEFAULT_CITY", "Kochi,IN"))
+    occasion = request.args.get("occasion", "any")
+    try:
+        trip_days = max(1, min(5, int(request.args.get("days", 3))))
+    except ValueError:
+        trip_days = 3
+
+    try:
+        forecast_days = get_forecast(city, days=trip_days)
+    except Exception as e:
+        flash(f"Could not fetch forecast: {e}")
+        return redirect(url_for("index"))
+
+    closet = load_closet()
+    if not closet:
+        flash("Your closet is empty — upload some clothes first.")
+        return redirect(url_for("index"))
+
+    filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
+
+    try:
+        bias = compute_warmth_bias(get_history())
+    except Exception:
+        bias = 0
+
+    planned_days = recommend.plan_days(filtered_closet, forecast_days, bias=bias)
+
+    # Aggregate the unique set of items across the whole trip into one
+    # packing checklist, grouped by zone, alongside the day-by-day plan.
+    seen_ids = set()
+    checklist = {"top": [], "bottom": [], "feet": [], "head": []}
+    for day in planned_days:
+        for zone, item in day["picks"].items():
+            if item and item["id"] not in seen_ids:
+                seen_ids.add(item["id"])
+                checklist[zone].append(item)
+
+    days = [
+        {
+            "date": d["date"],
+            "weather": d["weather"],
+            "picks": d["picks"],
+            "weather_icon": weather_icon_svg(d["weather"].get("condition", "")),
+        }
+        for d in planned_days
+    ]
+
+    return render_template(
+        "packing_list.html", days=days, checklist=checklist, city=city,
+        occasion=occasion, occasion_note=occasion_note, trip_days=trip_days,
+    )
 
 
 @app.route("/keep-alive")

@@ -78,7 +78,8 @@
       cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); flex-shrink: 0;
     }
     @media (max-width: 480px) {
-      .tabs a { padding: 6px 10px; font-size: 0.78rem; }
+      .tabs { overflow-x: auto; max-width: 70vw; }
+      .tabs a { padding: 6px 10px; font-size: 0.78rem; white-space: nowrap; }
       .brand { font-size: 1.3rem; }
     }
 
@@ -305,6 +306,7 @@
         <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Closet</a>
         <a href="{{ url_for('suggest') }}" class="show-loading-link {{ 'active' if request.endpoint == 'suggest' }}" data-loading-message="Checking today's weather and styling an outfit…">Today</a>
         <a href="{{ url_for('week') }}" class="show-loading-link {{ 'active' if request.endpoint == 'week' }}" data-loading-message="Pulling the forecast and planning outfits…">This week</a>
+        <a href="{{ url_for('packing_list') }}" class="show-loading-link {{ 'active' if request.endpoint == 'packing_list' }}" data-loading-message="Planning your trip…">Packing</a>
         <a href="{{ url_for('history') }}" class="{{ 'active' if request.endpoint == 'history' }}">History</a>
       </div>
       <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" type="button">

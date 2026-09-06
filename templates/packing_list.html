@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Packing List{% endblock %}
+{% block content %}
+
+  <h2 class="section-title">Packing list for {{ trip_days }} day{{ 's' if trip_days != 1 }} in {{ city.split(',')[0] }}</h2>
+
+  <form action="{{ url_for('packing_list') }}" method="get" class="show-loading-form filter-row" data-loading-message="Planning your trip…">
+    <input type="text" name="city" placeholder="City,CountryCode e.g. Kochi,IN" value="{{ city }}">
+    <select name="days">
+      {% for n in [1, 2, 3, 4, 5] %}
+        <option value="{{ n }}" {{ 'selected' if trip_days == n }}>{{ n }} day{{ 's' if n != 1 }}</option>
+      {% endfor %}
+    </select>
+    <select name="occasion">
+      {% for o in ['any', 'casual', 'work', 'formal', 'gym'] %}
+        <option value="{{ o }}" {{ 'selected' if occasion == o }}>{{ 'Any occasion' if o == 'any' else o|capitalize }}</option>
+      {% endfor %}
+    </select>
+    <input type="submit" value="Plan trip">
+  </form>
+
+  <p style="font-size:0.8rem; color: var(--ink-soft); margin-bottom:20px;">
+    Based on the free 5-day forecast, so this works best for trips starting soon rather than far in the future.
+  </p>
+
+  {% if occasion_note %}<div class="notes-block" style="margin-bottom:20px;">{{ occasion_note }}</div>{% endif %}
+
+  <h2 class="section-title">Pack these items</h2>
+  <div class="tag-grid" style="margin-bottom: 30px;">
+    {% for zone in ['top', 'bottom', 'feet', 'head'] %}
+      {% for item in checklist[zone] %}
+        <div class="tag">
+          <div class="tag-photo"><img src="{{ item.image_url }}" alt="{{ item.type }}"></div>
+          <div class="tag-perf"></div>
+          <div class="tag-body">
+            <p class="tag-title">{{ item.color }} {{ item.type }}</p>
+            <div class="tag-specs">
+              <div class="tag-spec-row"><span class="tag-spec-label">Zone</span><span class="tag-spec-val">{{ zone|capitalize }}</span></div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  <h2 class="section-title">Day-by-day plan</h2>
+  <div class="day-grid">
+    {% for day in days %}
+      <div class="day-card">
+        <p class="day-label">{{ day.date }}</p>
+        <div class="weather-icon-wrap" style="transform: scale(0.6); transform-origin: left center;">{{ day.weather_icon|safe }}</div>
+        <p class="day-temp">{{ day.weather.temp_min|round(1) }}–{{ day.weather.temp_max|round(1) }}°C · {{ day.weather.condition }}</p>
+        <div class="day-thumbs">
+          {% for zone in ['top', 'bottom', 'feet', 'head'] %}
+            {% set item = day.picks[zone] %}
+            <div class="day-thumb">
+              {% if item %}
+                <img src="{{ item.image_url }}" alt="{{ item.type }}">
+                <span>{{ item.color }} {{ item.type }}</span>
+              {% else %}
+                <div class="empty-thumb"></div>
+                <span>—</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

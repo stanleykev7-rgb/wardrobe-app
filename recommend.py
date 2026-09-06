@@ -67,6 +67,35 @@ def pick_for_zone_with_variety(closet: list, zone: str, target: int, need_waterp
     return candidates[0]
 
 
+def plan_days(closet: list, forecast_days: list, bias: int = 0) -> list:
+    """
+    Given a list of daily weather summaries (from weather.get_forecast),
+    plans one outfit per day using the variety-aware picker, avoiding
+    repeating the previous day's pick in each zone where an alternative
+    exists. Used by both the weekly view and the packing list generator
+    so they share one tested implementation.
+
+    Returns: [{"date": str, "weather": dict, "picks": {zone: item_or_None}}, ...]
+    """
+    days = []
+    previous_picks = {"top": None, "bottom": None, "feet": None, "head": None}
+
+    for day_weather in forecast_days:
+        temp = day_weather.get("feels_like_c", day_weather.get("temp_c", 20))
+        target = target_warmth(temp, bias)
+        need_waterproof = day_weather.get("rain", False)
+
+        picks = {}
+        for zone in ZONES_REQUIRED + ZONES_OPTIONAL:
+            avoid_id = previous_picks[zone]["id"] if previous_picks[zone] else None
+            picks[zone] = pick_for_zone_with_variety(closet, zone, target, need_waterproof, avoid_id=avoid_id)
+        previous_picks = picks
+
+        days.append({"date": day_weather["date"], "weather": day_weather, "picks": picks})
+
+    return days
+
+
 def suggest_outfit(closet: list, weather: dict, bias: int = 0) -> dict:
     """
     closet: list of item dicts (see closet_store)
