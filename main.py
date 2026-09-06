@@ -5,7 +5,7 @@ from datetime import datetime, date
 from flask import Flask, request, render_template, redirect, url_for, flash
 from dotenv import load_dotenv
 
-from groq_classifier import classify_garment, ClassificationFailed
+from groq_classifier import classify_garment, classify_garments_multi, ClassificationFailed
 from weather import get_current_weather, get_forecast
 import recommend
 from recommend import suggest_outfit
@@ -108,6 +108,8 @@ def upload():
         flash("Unsupported file type. Use png, jpg, jpeg, or webp.")
         return redirect(url_for("index"))
 
+    is_multi = request.form.get("multi") == "on"
+
     item_id = uuid.uuid4().hex
     raw_path = os.path.join(TMP_DIR, f"{item_id}_raw")
     processed_path = os.path.join(TMP_DIR, f"{item_id}.jpg")
@@ -125,28 +127,45 @@ def upload():
 
     image_key = f"photos/{item_id}.jpg"
 
-    # Classify first, while the processed file still exists locally.
+    if is_multi:
+        return _handle_multi_upload(item_id, processed_path, image_key)
+    return _handle_single_upload(item_id, processed_path, image_key)
+
+
+def _upload_processed_photo(processed_path: str, image_key: str) -> str:
+    """Shared by both upload paths: pushes the already-resized local file
+    to Supabase Storage, cleans up the local temp copy, and returns the
+    public URL. Raises on failure - callers handle the redirect/flash."""
+    storage_supabase.upload_photo(processed_path, image_key, "image/jpeg")
+    image_url = storage_supabase.public_url_for(image_key)
+    if os.path.exists(processed_path):
+        os.remove(processed_path)
+    return image_url
+
+
+def _default_attrs() -> dict:
+    return {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasion": "casual"}
+
+
+def _handle_single_upload(item_id: str, processed_path: str, image_key: str):
     try:
         attrs = classify_garment(processed_path)
         needs_review = False
     except ClassificationFailed:
-        attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasion": "casual"}
+        attrs = _default_attrs()
         needs_review = True
     except Exception as e:
         flash(f"Unexpected error during classification: {e}")
-        attrs = {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasion": "casual"}
+        attrs = _default_attrs()
         needs_review = True
 
-    # Then upload the same local file to Supabase Storage and clean up.
     try:
-        storage_supabase.upload_photo(processed_path, image_key, "image/jpeg")
-        image_url = storage_supabase.public_url_for(image_key)
+        image_url = _upload_processed_photo(processed_path, image_key)
     except Exception as e:
         flash(f"Could not upload photo to storage: {e}")
-        return redirect(url_for("index"))
-    finally:
         if os.path.exists(processed_path):
             os.remove(processed_path)
+        return redirect(url_for("index"))
 
     item = {
         "id": item_id,
@@ -168,6 +187,58 @@ def upload():
         flash("Auto-detection didn't work this time — this item was saved, please edit its details below.")
     else:
         flash(f"Added {item['color']} {item['type']} (warmth {item['warmth']}/10, zone: {item['zone']}).")
+    return redirect(url_for("index"))
+
+
+def _handle_multi_upload(item_id: str, processed_path: str, image_key: str):
+    try:
+        detected = classify_garments_multi(processed_path)
+        needs_review = False
+    except ClassificationFailed:
+        # Can't segment the photo without AI, so fall back to ONE
+        # needs-review item, same as the single-photo failure path -
+        # the photo itself is never lost.
+        detected = [_default_attrs()]
+        needs_review = True
+    except Exception as e:
+        flash(f"Unexpected error during classification: {e}")
+        detected = [_default_attrs()]
+        needs_review = True
+
+    try:
+        image_url = _upload_processed_photo(processed_path, image_key)
+    except Exception as e:
+        flash(f"Could not upload photo to storage: {e}")
+        if os.path.exists(processed_path):
+            os.remove(processed_path)
+        return redirect(url_for("index"))
+
+    added_count = 0
+    for i, attrs in enumerate(detected):
+        # All detected garments share the same source photo - we can't
+        # crop individual items out without real image segmentation, so
+        # each entry just points at the same image_key/image_url.
+        item = {
+            "id": uuid.uuid4().hex if i > 0 else item_id,
+            "image_key": image_key,
+            "image_url": image_url,
+            "type": attrs.get("type", "unknown"),
+            "color": attrs.get("color", "unknown"),
+            "warmth": attrs.get("warmth", 5),
+            "zone": attrs.get("zone", "top"),
+            "waterproof": attrs.get("waterproof", False),
+            "occasion": attrs.get("occasion", "casual"),
+            "in_laundry": False,
+            "needs_review": needs_review,
+            "added_at": datetime.utcnow().isoformat(),
+        }
+        save_item(item)
+        added_count += 1
+
+    if needs_review:
+        flash("Couldn't automatically split up that photo — saved it as one item, please edit its details below.")
+    else:
+        flash(f"Added {added_count} item{'s' if added_count != 1 else ''} from that photo — they all share the same picture since it wasn't taken one-per-item.")
     return redirect(url_for("index"))
 
 

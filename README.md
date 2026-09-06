@@ -154,16 +154,19 @@ instance) from going idle:
    manually any time from the repo's **Actions** tab → **Keep Supabase and
    Render awake** → **Run workflow**, useful for testing it works.
 
-## 9. Database migrations for this update (occasion tags, outfit history)
+## 9. Database migrations
 
-This update adds occasion tagging and outfit history/weekly planning, which
-need two changes in Supabase's SQL Editor:
+Run these in Supabase's SQL Editor. They're additive/idempotent, so it's
+safe to run them even if you're not sure which you've already applied:
 
 ```sql
--- Add occasion tagging to existing items
+-- Occasion tagging
 alter table items add column if not exists occasion text default 'casual';
 
--- New table for logged outfit history
+-- Laundry/rotation tracking
+alter table items add column if not exists in_laundry boolean default false;
+
+-- Outfit history (logging + feedback loop)
 create table if not exists outfit_history (
   log_date date primary key,
   occasion text,
@@ -174,12 +177,20 @@ create table if not exists outfit_history (
   reasoning text,
   temp_c numeric,
   condition text,
+  target_warmth integer,
+  felt text,
   created_at timestamptz default now()
 );
+
+-- Recommended: lock both tables down to service_role-only access.
+-- Safe even though this app already only ever uses service_role - it
+-- just means an accidentally-leaked anon key couldn't read/write them.
+alter table items enable row level security;
+alter table outfit_history enable row level security;
 ```
 
-Run both, then redeploy - no new environment variables are needed, this
-reuses your existing Supabase credentials.
+No new environment variables are needed - everything above reuses your
+existing Supabase credentials.
 
 ## Notes and next steps
 

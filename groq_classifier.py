@@ -121,6 +121,100 @@ def classify_garment(image_path: str) -> dict:
     raise ClassificationFailed(str(last_error))
 
 
+MULTI_CLASSIFY_PROMPT = """You are looking at a photo that may contain SEVERAL clothing items or
+accessories at once (e.g. a closet shelf, a flat-lay, several garments
+hung together).
+
+Identify EVERY distinct garment or accessory you can see and respond with
+ONLY a JSON object (no markdown, no extra text) with this exact shape:
+
+{
+  "items": [
+    {
+      "type": "short garment name, e.g. 'denim jacket'",
+      "color": "dominant color, e.g. 'navy blue'",
+      "zone": "one of: head, top, bottom, feet",
+      "warmth": integer from 1 (very light/summer) to 10 (very warm/heavy winter),
+      "waterproof": true or false,
+      "occasion": "one of: casual, work, formal, gym"
+    }
+  ]
+}
+
+Rules:
+- List each distinct garment ONCE, even if partially overlapping others in the photo.
+- "zone" must be exactly one of: head, top, bottom, feet (see the single-item
+  rules: torso items are "top", legs are "bottom", headwear is "head",
+  footwear is "feet").
+- If you genuinely see only one item, return an array with just that one item.
+- If you can't identify anything wearable in the photo, return {"items": []}.
+- Do not invent items that aren't visible.
+"""
+
+
+def classify_garments_multi(image_path: str) -> list:
+    """
+    Sends the image at image_path to Groq's vision model and returns a
+    LIST of dicts, one per detected garment: [{type, color, zone, warmth,
+    waterproof, occasion}, ...]. Retries on rate limits / transient
+    errors, same as classify_garment. Raises ClassificationFailed if every
+    attempt fails or the model detects nothing.
+    """
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY is not set. Add it to your .env file.")
+
+    client = Groq(api_key=api_key)
+
+    ext = image_path.rsplit(".", 1)[-1].lower()
+    mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+    b64_image = _encode_image(image_path)
+
+    last_error = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            completion = client.chat.completions.create(
+                model=VISION_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": MULTI_CLASSIFY_PROMPT},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{b64_image}"},
+                            },
+                        ],
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=1500,
+                reasoning_effort="none",
+                response_format={"type": "json_object"},
+            )
+            raw = completion.choices[0].message.content
+            data = json.loads(raw)
+            raw_items = data.get("items", [])
+            if not isinstance(raw_items, list) or len(raw_items) == 0:
+                raise ClassificationFailed("No garments detected in the photo.")
+            return [_sanitize(item) for item in raw_items]
+
+        except json.JSONDecodeError as e:
+            last_error = e
+        except ClassificationFailed:
+            raise  # "no garments detected" isn't worth retrying - the photo won't change
+        except Exception as e:
+            status = getattr(e, "status_code", None)
+            last_error = e
+            if status is not None and status != 429 and status < 500:
+                break
+
+        if attempt < MAX_RETRIES:
+            time.sleep(BASE_DELAY_SECONDS * (2 ** attempt))
+
+    raise ClassificationFailed(str(last_error))
+
+
 def _sanitize(data: dict) -> dict:
     zone = str(data.get("zone", "top")).lower()
     if zone not in ("head", "top", "bottom", "feet"):
