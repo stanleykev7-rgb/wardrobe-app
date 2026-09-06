@@ -116,8 +116,8 @@ def suggest_outfit_ai(closet: list, weather: dict, bias: int = 0) -> dict:
             model=TEXT_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
-            max_tokens=500,
-            reasoning_effort="low",
+            max_tokens=900,
+            reasoning_effort="none",
             response_format={"type": "json_object"},
         )
         raw = completion.choices[0].message.content
