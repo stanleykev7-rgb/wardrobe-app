@@ -110,3 +110,8 @@ def load_history(limit: int = 60) -> list:
         .execute()
     )
     return result.data
+
+
+def update_history_feedback(log_date: str, felt: str) -> None:
+    client = get_client()
+    client.table("outfit_history").update({"felt": felt}).eq("log_date", log_date).execute()

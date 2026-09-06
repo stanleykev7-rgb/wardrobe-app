@@ -32,3 +32,32 @@ def compute_wear_stats(history: list) -> dict:
             if entry["log_date"] > stats[item_id]["last_worn"]:
                 stats[item_id]["last_worn"] = entry["log_date"]
     return stats
+
+
+def compute_warmth_bias(history: list, limit: int = 20) -> int:
+    """
+    Looks at the most recent entries that have BOTH feedback ("felt") and
+    a recorded target_warmth, and derives a persistent adjustment: if
+    outfits have tended to run cold, a positive bias nudges future
+    suggestions warmer; if they've run hot, negative. Clamped to [-2, 2]
+    so one bad week can't wildly overcorrect future suggestions.
+    """
+    scored = [h for h in history if h.get("felt") and h.get("target_warmth") is not None][:limit]
+    if not scored:
+        return 0
+
+    adjustments = []
+    for entry in scored:
+        if entry["felt"] == "too_cold":
+            adjustments.append(1)
+        elif entry["felt"] == "too_hot":
+            adjustments.append(-1)
+        else:
+            adjustments.append(0)
+
+    avg = sum(adjustments) / len(adjustments)
+    return max(-2, min(2, round(avg)))
+
+
+def save_feedback(log_date: str, felt: str) -> None:
+    storage_supabase.update_history_feedback(log_date, felt)

@@ -8,23 +8,29 @@ ZONES_REQUIRED = ["top", "bottom", "feet"]
 ZONES_OPTIONAL = ["head"]
 
 
-def target_warmth(temp_c: float) -> int:
-    """Rough mapping of temperature to a 1-10 target warmth score."""
+def target_warmth(temp_c: float, bias: int = 0) -> int:
+    """Rough mapping of temperature to a 1-10 target warmth score.
+    `bias` (typically from history_store.compute_warmth_bias) nudges the
+    result up or down based on feedback about past suggestions - e.g. if
+    the person has said outfits ran cold several times, a positive bias
+    pushes future suggestions warmer."""
     if temp_c >= 30:
-        return 1
-    if temp_c >= 25:
-        return 2
-    if temp_c >= 20:
-        return 4
-    if temp_c >= 15:
-        return 5
-    if temp_c >= 10:
-        return 7
-    if temp_c >= 5:
-        return 8
-    if temp_c >= 0:
-        return 9
-    return 10
+        base = 1
+    elif temp_c >= 25:
+        base = 2
+    elif temp_c >= 20:
+        base = 4
+    elif temp_c >= 15:
+        base = 5
+    elif temp_c >= 10:
+        base = 7
+    elif temp_c >= 5:
+        base = 8
+    elif temp_c >= 0:
+        base = 9
+    else:
+        base = 10
+    return max(1, min(10, base + bias))
 
 
 def candidates_for_zone(closet: list, zone: str, target: int, need_waterproof: bool, limit: int = 4) -> list:
@@ -61,16 +67,18 @@ def pick_for_zone_with_variety(closet: list, zone: str, target: int, need_waterp
     return candidates[0]
 
 
-def suggest_outfit(closet: list, weather: dict) -> dict:
+def suggest_outfit(closet: list, weather: dict, bias: int = 0) -> dict:
     """
     closet: list of item dicts (see closet_store)
     weather: dict from weather.get_current_weather
+    bias: warmth adjustment from history_store.compute_warmth_bias, based
+    on past feedback about whether suggestions ran warm or cold.
     Returns: {"picks": {zone: item_or_None}, "target_warmth": int, "notes": [str], "reasoning": None}
     `reasoning` is always None here since this is the non-AI fallback - main.py
     only fills it in when outfit_ai.py's coordinated suggestion succeeds.
     """
     temp = weather.get("feels_like_c", weather.get("temp_c", 20))
-    target = target_warmth(temp)
+    target = target_warmth(temp, bias)
     need_waterproof = weather.get("rain", False)
 
     picks = {}

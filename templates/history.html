@@ -33,6 +33,17 @@
         {% if entry.reasoning %}
           <div class="stylist-label" style="margin-top:10px; color: var(--ink-soft);">"{{ entry.reasoning }}"</div>
         {% endif %}
+
+        {% if entry.felt %}
+          <div class="feedback-recorded">You said this ran: {{ entry.felt|replace('_', ' ') }}</div>
+        {% else %}
+          <form action="{{ url_for('history_feedback', log_date=entry.log_date) }}" method="post" class="feedback-row">
+            <span class="feedback-prompt">How did this feel?</span>
+            <button type="submit" name="felt" value="too_cold" class="feedback-btn">Too cold</button>
+            <button type="submit" name="felt" value="just_right" class="feedback-btn">Just right</button>
+            <button type="submit" name="felt" value="too_hot" class="feedback-btn">Too warm</button>
+          </form>
+        {% endif %}
       </div>
     {% endfor %}
   {% else %}

@@ -62,9 +62,9 @@ class OutfitAIFailed(Exception):
     pass
 
 
-def _build_candidates(closet: list, weather: dict) -> dict:
+def _build_candidates(closet: list, weather: dict, bias: int = 0) -> dict:
     temp = weather.get("feels_like_c", weather.get("temp_c", 20))
-    target = recommend.target_warmth(temp)
+    target = recommend.target_warmth(temp, bias)
     need_waterproof = weather.get("rain", False)
 
     candidates = {}
@@ -84,7 +84,7 @@ def _candidates_to_prompt_json(candidates: dict) -> str:
     return json.dumps(slim, indent=2)
 
 
-def suggest_outfit_ai(closet: list, weather: dict) -> dict:
+def suggest_outfit_ai(closet: list, weather: dict, bias: int = 0) -> dict:
     """
     Returns the same shape as recommend.suggest_outfit:
     {"picks": {zone: item_or_None}, "target_warmth": int, "notes": [str], "reasoning": str}
@@ -94,7 +94,7 @@ def suggest_outfit_ai(closet: list, weather: dict) -> dict:
     if not api_key:
         raise OutfitAIFailed("GROQ_API_KEY is not set.")
 
-    candidates = _build_candidates(closet, weather)
+    candidates = _build_candidates(closet, weather, bias)
 
     # If every zone has zero candidates, there's nothing for the model to
     # choose between - no point calling the API.
@@ -146,7 +146,7 @@ def suggest_outfit_ai(closet: list, weather: dict) -> dict:
             notes.append(f"No {zone} items in your closet yet — add some for full suggestions.")
 
     temp = weather.get("feels_like_c", weather.get("temp_c", 20))
-    target = recommend.target_warmth(temp)
+    target = recommend.target_warmth(temp, bias)
 
     if weather.get("rain") and not any(
         picks[z] and picks[z].get("waterproof") for z in recommend.ZONES_REQUIRED if picks[z]

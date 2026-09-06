@@ -11,7 +11,7 @@ import recommend
 from recommend import suggest_outfit
 from outfit_ai import suggest_outfit_ai, OutfitAIFailed
 from closet_store import load_closet, save_item, update_item, delete_item
-from history_store import log_outfit, get_history, compute_wear_stats
+from history_store import log_outfit, get_history, compute_wear_stats, compute_warmth_bias, save_feedback
 from image_utils import process_image
 from weather_icons import weather_icon_svg
 from mannequin import mannequin_svg
@@ -220,9 +220,14 @@ def suggest():
     filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
 
     try:
-        outfit = suggest_outfit_ai(filtered_closet, weather)
+        bias = compute_warmth_bias(get_history())
+    except Exception:
+        bias = 0  # history unavailable shouldn't block getting a suggestion
+
+    try:
+        outfit = suggest_outfit_ai(filtered_closet, weather, bias=bias)
     except OutfitAIFailed:
-        outfit = suggest_outfit(filtered_closet, weather)
+        outfit = suggest_outfit(filtered_closet, weather, bias=bias)
         outfit["notes"] = outfit.get("notes", []) + ["Styling suggestion unavailable right now — showing closest-warmth picks instead."]
 
     if occasion_note:
@@ -237,6 +242,7 @@ def suggest():
 
 @app.route("/log-outfit", methods=["POST"])
 def log_outfit_route():
+    target_warmth_raw = request.form.get("target_warmth")
     entry = {
         "log_date": date.today().isoformat(),
         "occasion": request.form.get("occasion") if request.form.get("occasion") in VALID_OCCASIONS else "casual",
@@ -247,6 +253,7 @@ def log_outfit_route():
         "reasoning": request.form.get("reasoning") or None,
         "temp_c": request.form.get("temp_c") or None,
         "condition": request.form.get("condition") or None,
+        "target_warmth": int(target_warmth_raw) if target_warmth_raw else None,
     }
     try:
         log_outfit(entry)
@@ -254,6 +261,20 @@ def log_outfit_route():
     except Exception as e:
         flash(f"Could not log outfit: {e}")
     return redirect(url_for("suggest", city=request.form.get("city", "")))
+
+
+@app.route("/history/<log_date>/feedback", methods=["POST"])
+def history_feedback(log_date):
+    felt = request.form.get("felt")
+    if felt not in ("too_cold", "just_right", "too_hot"):
+        flash("Invalid feedback value.")
+        return redirect(url_for("history"))
+    try:
+        save_feedback(log_date, felt)
+        flash("Thanks — future suggestions will take that into account.")
+    except Exception as e:
+        flash(f"Could not save feedback: {e}")
+    return redirect(url_for("history"))
 
 
 @app.route("/history")
@@ -287,11 +308,16 @@ def week():
 
     filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
 
+    try:
+        bias = compute_warmth_bias(get_history())
+    except Exception:
+        bias = 0
+
     days = []
     previous_picks = {"top": None, "bottom": None, "feet": None, "head": None}
     for day_weather in forecast_days:
         temp = day_weather.get("feels_like_c", day_weather.get("temp_c", 20))
-        target = recommend.target_warmth(temp)
+        target = recommend.target_warmth(temp, bias)
         need_waterproof = day_weather.get("rain", False)
 
         picks = {}
