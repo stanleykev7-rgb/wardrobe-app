@@ -472,7 +472,16 @@ def history():
 @app.route("/week")
 def week():
     city = request.args.get("city", os.environ.get("DEFAULT_CITY", "Kochi,IN"))
-    occasion = request.args.get("occasion", "any")
+    master_occasion = request.args.get("occasion", "any")
+
+    # Per-day overrides come in as override_<date>=<occasion> query params
+    # (e.g. override_2026-09-09=casual), set from each day card's own
+    # small form on week.html.
+    day_overrides = {
+        key[len("override_"):]: value
+        for key, value in request.args.items()
+        if key.startswith("override_") and value and value != "default"
+    }
 
     try:
         forecast_days = get_forecast(city, days=5)
@@ -485,14 +494,26 @@ def week():
         flash("Your closet is empty — upload some clothes first.")
         return redirect(url_for("index"))
 
-    filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
-
     try:
         bias = compute_warmth_bias(get_history(current_profile_id()))
     except Exception:
         bias = 0
 
-    planned_days = recommend.plan_days(filtered_closet, forecast_days, bias=bias)
+    occasion_note = None
+    if day_overrides:
+        # At least one day has its own occasion - plan day-by-day so each
+        # can draw from a differently-filtered closet, while rotation
+        # still spans the whole week.
+        def get_closet_for_day(date_str):
+            effective = day_overrides.get(date_str, master_occasion)
+            return filter_by_occasion(closet, effective)
+
+        planned_days = recommend.plan_days_per_occasion(get_closet_for_day, forecast_days, bias=bias)
+    else:
+        filtered_closet, occasion_note = filter_by_occasion(closet, master_occasion)
+        planned_days = [
+            {**d, "note": None} for d in recommend.plan_days(filtered_closet, forecast_days, bias=bias)
+        ]
 
     days = []
     for planned_day in planned_days:
@@ -501,9 +522,14 @@ def week():
             "weather": planned_day["weather"],
             "picks": planned_day["picks"],
             "weather_icon": weather_icon_svg(planned_day["weather"].get("condition", "")),
+            "effective_occasion": day_overrides.get(planned_day["date"], master_occasion),
+            "note": planned_day.get("note"),
         })
 
-    return render_template("week.html", days=days, city=city, occasion=occasion, occasion_note=occasion_note)
+    return render_template(
+        "week.html", days=days, city=city, occasion=master_occasion,
+        occasion_note=occasion_note, day_overrides=day_overrides,
+    )
 
 
 @app.route("/packing-list")

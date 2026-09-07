@@ -67,6 +67,49 @@ def pick_for_zone_with_variety(closet: list, zone: str, target: int, need_waterp
     return candidates[0]
 
 
+def plan_days_per_occasion(get_closet_for_day, forecast_days: list, bias: int = 0) -> list:
+    """
+    Like plan_days, but supports a DIFFERENT candidate closet per day -
+    e.g. Monday filtered to "work" items, Wednesday to "casual". Usage-
+    count rotation is still shared across the whole week regardless of
+    each day's occasion, so a per-day override doesn't break the
+    "don't over-repeat items" behavior.
+
+    `get_closet_for_day` is a callable: (date_str) -> (closet_list,
+    note_or_None), typically main.py's filter_by_occasion for that day's
+    effective occasion.
+
+    Returns: [{"date", "weather", "picks", "note"}, ...]
+    Note: unlike plan_days, this does NOT run the duplicate-full-outfit
+    detection pass, since "alternatives" would need to come from each
+    day's own (possibly different) filtered closet - a reasonable
+    simplification since differing occasions per day already make exact
+    combo collisions far less likely.
+    """
+    days = []
+    usage_count = {"top": {}, "bottom": {}, "feet": {}, "head": {}}
+
+    for day_weather in forecast_days:
+        day_closet, note = get_closet_for_day(day_weather["date"])
+        temp = day_weather.get("feels_like_c", day_weather.get("temp_c", 20))
+        target = target_warmth(temp, bias)
+        need_waterproof = day_weather.get("rain", False)
+
+        picks = {}
+        for zone in ZONES_REQUIRED + ZONES_OPTIONAL:
+            candidates = candidates_for_zone(day_closet, zone, target, need_waterproof, limit=8)
+            if not candidates:
+                picks[zone] = None
+                continue
+            best = min(candidates, key=lambda c: usage_count[zone].get(c["id"], 0))
+            picks[zone] = best
+            usage_count[zone][best["id"]] = usage_count[zone].get(best["id"], 0) + 1
+
+        days.append({"date": day_weather["date"], "weather": day_weather, "picks": picks, "note": note})
+
+    return days
+
+
 def plan_days(closet: list, forecast_days: list, bias: int = 0) -> list:
     """
     Given a list of daily weather summaries (from weather.get_forecast),

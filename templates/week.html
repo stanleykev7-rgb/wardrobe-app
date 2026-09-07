@@ -22,6 +22,28 @@
         <p class="day-label">{{ day.date }}</p>
         <div class="weather-icon-wrap" style="transform: scale(0.6); transform-origin: left center;">{{ day.weather_icon|safe }}</div>
         <p class="day-temp">{{ day.weather.temp_min|round(1) }}–{{ day.weather.temp_max|round(1) }}°C · {{ day.weather.condition }}</p>
+
+        <form action="{{ url_for('week') }}" method="get" class="show-loading-form day-override-form" data-loading-message="Updating this day's outfit…">
+          <input type="hidden" name="city" value="{{ city }}">
+          <input type="hidden" name="occasion" value="{{ occasion }}">
+          {% for other_date, other_occ in day_overrides.items() %}
+            {% if other_date != day.date %}
+              <input type="hidden" name="override_{{ other_date }}" value="{{ other_occ }}">
+            {% endif %}
+          {% endfor %}
+          <select name="override_{{ day.date }}">
+            <option value="default" {{ 'selected' if day.date not in day_overrides }}>
+              Master ({{ 'any' if occasion == 'any' else occasion|replace('_', ' ')|capitalize }})
+            </option>
+            {% for o in ['casual', 'work', 'semi_formal', 'formal', 'party', 'gym'] %}
+              <option value="{{ o }}" {{ 'selected' if day_overrides.get(day.date) == o }}>{{ o|replace('_', ' ')|capitalize }}</option>
+            {% endfor %}
+          </select>
+          <input type="submit" value="Set" class="day-override-btn">
+        </form>
+
+        {% if day.note %}<p class="day-note">{{ day.note }}</p>{% endif %}
+
         <div class="day-thumbs">
           {% for zone in ['top', 'bottom', 'feet', 'head'] %}
             {% set item = day.picks[zone] %}
