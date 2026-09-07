@@ -1,13 +1,14 @@
 """
 Closet storage — backed by Supabase (a real Postgres `items` table, see
-storage_supabase.py). Same function names main.py already expects.
+storage_supabase.py). Scoped per profile_id so each person sharing this
+deployment sees only their own closet.
 """
 
 import storage_supabase
 
 
-def load_closet() -> list:
-    return storage_supabase.load_items()
+def load_closet(profile_id: str) -> list:
+    return storage_supabase.load_items(profile_id)
 
 
 def save_item(item: dict) -> None:

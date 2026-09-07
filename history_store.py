@@ -1,6 +1,7 @@
 """
-Outfit history — thin wrapper over storage_supabase, mirroring the
-closet_store.py pattern so main.py has one consistent way to reach storage.
+Outfit history — thin wrapper over storage_supabase, scoped per profile_id
+so each person's logged outfits, wear stats, and feedback bias stay
+separate from anyone else sharing this deployment.
 """
 
 import storage_supabase
@@ -10,8 +11,8 @@ def log_outfit(entry: dict) -> None:
     storage_supabase.save_history_entry(entry)
 
 
-def get_history(limit: int = 60) -> list:
-    return storage_supabase.load_history(limit=limit)
+def get_history(profile_id: str, limit: int = 60) -> list:
+    return storage_supabase.load_history(profile_id, limit=limit)
 
 
 def compute_wear_stats(history: list) -> dict:
@@ -59,5 +60,5 @@ def compute_warmth_bias(history: list, limit: int = 20) -> int:
     return max(-2, min(2, round(avg)))
 
 
-def save_feedback(log_date: str, felt: str) -> None:
-    storage_supabase.update_history_feedback(log_date, felt)
+def save_feedback(profile_id: str, log_date: str, felt: str) -> None:
+    storage_supabase.update_history_feedback(profile_id, log_date, felt)

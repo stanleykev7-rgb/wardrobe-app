@@ -5,6 +5,10 @@ because Supabase's free tier requires no credit card. Trade-off: free
 projects auto-pause after 7 days with zero API activity (data is safe,
 just offline until resumed) — see /keep-alive in main.py and the GitHub
 Actions workflow that pings it periodically to prevent that.
+
+All closet/history functions are scoped to a profile_id, since the app
+supports multiple people sharing one deployment, each with their own
+closet (see profiles.py / the /profiles routes in main.py).
 """
 
 import os
@@ -57,11 +61,36 @@ def public_url_for(object_key: str) -> str:
     return client.storage.from_(_bucket_name()).get_public_url(object_key)
 
 
-# ---- Closet metadata (real Postgres table via PostgREST) ----
+# ---- Profiles ----
 
-def load_items() -> list:
+def list_profiles() -> list:
     client = get_client()
-    result = client.table("items").select("*").order("added_at").execute()
+    result = client.table("profiles").select("*").order("created_at").execute()
+    return result.data
+
+
+def get_profile(profile_id: str):
+    client = get_client()
+    result = client.table("profiles").select("*").eq("id", profile_id).execute()
+    return result.data[0] if result.data else None
+
+
+def create_profile(profile: dict) -> None:
+    client = get_client()
+    client.table("profiles").insert(profile).execute()
+
+
+# ---- Closet metadata (real Postgres table via PostgREST), scoped per profile ----
+
+def load_items(profile_id: str) -> list:
+    client = get_client()
+    result = (
+        client.table("items")
+        .select("*")
+        .eq("profile_id", profile_id)
+        .order("added_at")
+        .execute()
+    )
     return result.data
 
 
@@ -91,20 +120,22 @@ def ping() -> None:
     client.table("items").select("id").limit(1).execute()
 
 
-# ---- Outfit history (real Postgres table via PostgREST) ----
+# ---- Outfit history (real Postgres table via PostgREST), scoped per profile ----
 
 def save_history_entry(entry: dict) -> None:
-    """Upserts on log_date - logging the same day twice updates that
-    day's entry instead of creating a duplicate."""
+    """Upserts on (profile_id, log_date) - logging the same person's same
+    day twice updates that day's entry instead of creating a duplicate.
+    Different profiles logging the same calendar date are independent."""
     client = get_client()
-    client.table("outfit_history").upsert(entry, on_conflict="log_date").execute()
+    client.table("outfit_history").upsert(entry, on_conflict="profile_id,log_date").execute()
 
 
-def load_history(limit: int = 60) -> list:
+def load_history(profile_id: str, limit: int = 60) -> list:
     client = get_client()
     result = (
         client.table("outfit_history")
         .select("*")
+        .eq("profile_id", profile_id)
         .order("log_date", desc=True)
         .limit(limit)
         .execute()
@@ -112,6 +143,12 @@ def load_history(limit: int = 60) -> list:
     return result.data
 
 
-def update_history_feedback(log_date: str, felt: str) -> None:
+def update_history_feedback(profile_id: str, log_date: str, felt: str) -> None:
     client = get_client()
-    client.table("outfit_history").update({"felt": felt}).eq("log_date", log_date).execute()
+    (
+        client.table("outfit_history")
+        .update({"felt": felt})
+        .eq("profile_id", profile_id)
+        .eq("log_date", log_date)
+        .execute()
+    )

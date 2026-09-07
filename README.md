@@ -156,41 +156,57 @@ instance) from going idle:
 
 ## 9. Database migrations
 
-Run these in Supabase's SQL Editor. They're additive/idempotent, so it's
-safe to run them even if you're not sure which you've already applied:
+You already have an `outfit_history` table from before profiles existed
+(with `log_date` alone as its primary key), so this needs to happen in
+order: add the new columns first, backfill existing rows with a real
+profile, and only THEN switch the primary key - a primary key can't
+contain NULLs, so swapping it before backfilling would fail outright.
+
+### Step 1 - run this now (safe regardless of existing data)
 
 ```sql
--- Occasion tagging
-alter table items add column if not exists occasion text default 'casual';
-
--- Laundry/rotation tracking
-alter table items add column if not exists in_laundry boolean default false;
-
--- Outfit history (logging + feedback loop)
-create table if not exists outfit_history (
-  log_date date primary key,
-  occasion text,
-  top_id text,
-  bottom_id text,
-  feet_id text,
-  head_id text,
-  reasoning text,
-  temp_c numeric,
-  condition text,
-  target_warmth integer,
-  felt text,
+create table if not exists profiles (
+  id text primary key,
+  name text not null,
+  gender text,
   created_at timestamptz default now()
 );
 
--- Recommended: lock both tables down to service_role-only access.
--- Safe even though this app already only ever uses service_role - it
--- just means an accidentally-leaked anon key couldn't read/write them.
+alter table items add column if not exists occasion text default 'casual';
+alter table items add column if not exists in_laundry boolean default false;
+alter table items add column if not exists profile_id text;
+alter table outfit_history add column if not exists profile_id text;
+
 alter table items enable row level security;
 alter table outfit_history enable row level security;
+alter table profiles enable row level security;
 ```
 
-No new environment variables are needed - everything above reuses your
-existing Supabase credentials.
+### Step 2 - create your first profile through the app
+
+Deploy the updated code and create a profile through the UI (it'll prompt
+you automatically). Then find its id in Supabase's Table Editor →
+`profiles` table.
+
+### Step 3 - backfill your existing closet/history into that profile
+
+```sql
+update items set profile_id = '<paste-the-profile-id-here>' where profile_id is null;
+update outfit_history set profile_id = '<paste-the-profile-id-here>' where profile_id is null;
+```
+
+### Step 4 - now it's safe to switch outfit_history's primary key
+
+```sql
+alter table outfit_history drop constraint if exists outfit_history_pkey;
+alter table outfit_history add constraint outfit_history_pkey primary key (profile_id, log_date);
+```
+
+This makes `log_date` unique *per profile* instead of globally, so two
+people can log an outfit on the same calendar date without colliding.
+
+No new environment variables are needed anywhere in this section -
+everything reuses your existing Supabase credentials.
 
 ## Notes and next steps
 

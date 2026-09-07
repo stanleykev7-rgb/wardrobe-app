@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New Profile</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'IBM Plex Sans', sans-serif; background: #EDEEE7; color: #22262B; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: white; border-radius: 18px; padding: 36px 32px; max-width: 380px; width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    h1 { font-family: 'Fraunces', serif; font-size: 1.4rem; margin: 0 0 22px; text-align: center; }
+    label { display: block; font-size: 0.8rem; color: #5B5E58; margin-bottom: 6px; }
+    input[type=text], select { width: 100%; padding: 10px; border-radius: 9px; border: 1px solid #D8D5C9; font-size: 0.95rem; margin-bottom: 18px; font-family: inherit; }
+    input[type=submit] { width: 100%; background: #33517E; color: white; border: none; padding: 11px; border-radius: 9px; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
+    input[type=submit]:hover { background: #223A5E; }
+    .flash { background: #FFFBEB; border: 1px solid #FCD34D; color: #92400E; padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; font-size: 0.85rem; }
+    .back-link { display: block; text-align: center; margin-top: 16px; font-size: 0.8rem; color: #5B5E58; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>New profile</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}{% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}{% endif %}
+    {% endwith %}
+    <form action="{{ url_for('new_profile') }}" method="post">
+      <label>Name</label>
+      <input type="text" name="name" placeholder="e.g. Kevin" required>
+      <label>Closet type</label>
+      <select name="gender">
+        <option value="men">Men's</option>
+        <option value="women">Women's</option>
+        <option value="unisex">Unisex</option>
+      </select>
+      <input type="submit" value="Create profile">
+    </form>
+    {% if has_existing_profiles %}
+      <a href="{{ url_for('profiles_list') }}" class="back-link">&larr; Back to profiles</a>
+    {% endif %}
+  </div>
+</body>
+</html>

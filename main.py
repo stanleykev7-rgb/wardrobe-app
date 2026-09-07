@@ -2,7 +2,7 @@ import os
 import uuid
 from datetime import datetime, date
 
-from flask import Flask, request, render_template, redirect, url_for, flash
+from flask import Flask, request, render_template, redirect, url_for, flash, session
 from dotenv import load_dotenv
 
 from groq_classifier import classify_garment, classify_garments_multi, ClassificationFailed
@@ -31,6 +31,96 @@ os.makedirs(TMP_DIR, exist_ok=True)
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+VALID_GENDERS = ("men", "women", "unisex")
+
+# Routes reachable before a profile is selected - everything else redirects
+# to pick/create one first. keep-alive is excluded since it's hit by a
+# machine (GitHub Actions), not a browsing person.
+_PROFILE_EXEMPT_ENDPOINTS = {"profiles_list", "new_profile", "select_profile", "keep_alive", "static"}
+
+
+@app.before_request
+def require_profile():
+    if request.endpoint in _PROFILE_EXEMPT_ENDPOINTS:
+        return None
+    if session.get("profile_id"):
+        return None
+    try:
+        profiles = storage_supabase.list_profiles()
+    except Exception:
+        profiles = []
+    if not profiles:
+        return redirect(url_for("new_profile"))
+    return redirect(url_for("profiles_list"))
+
+
+def current_profile_id() -> str:
+    return session["profile_id"]
+
+
+@app.context_processor
+def inject_current_profile():
+    profile_id = session.get("profile_id")
+    if not profile_id:
+        return {"current_profile": None}
+    try:
+        return {"current_profile": storage_supabase.get_profile(profile_id)}
+    except Exception:
+        return {"current_profile": None}
+
+
+@app.route("/profiles")
+def profiles_list():
+    try:
+        profiles = storage_supabase.list_profiles()
+    except Exception as e:
+        flash(f"Could not load profiles: {e}")
+        profiles = []
+    return render_template("profiles.html", profiles=profiles)
+
+
+@app.route("/profiles/new", methods=["GET", "POST"])
+def new_profile():
+    if request.method == "GET":
+        try:
+            existing = storage_supabase.list_profiles()
+        except Exception:
+            existing = []
+        return render_template("new_profile.html", has_existing_profiles=bool(existing))
+
+    name = request.form.get("name", "").strip()
+    gender = request.form.get("gender") if request.form.get("gender") in VALID_GENDERS else "unisex"
+    if not name:
+        flash("Please enter a name.")
+        return redirect(url_for("new_profile"))
+
+    profile_id = uuid.uuid4().hex
+    try:
+        storage_supabase.create_profile({
+            "id": profile_id, "name": name, "gender": gender,
+            "created_at": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        flash(f"Could not create profile: {e}")
+        return redirect(url_for("new_profile"))
+
+    session["profile_id"] = profile_id
+    flash(f"Welcome, {name}!")
+    return redirect(url_for("index"))
+
+
+@app.route("/profiles/<profile_id>/select", methods=["POST"])
+def select_profile(profile_id):
+    session["profile_id"] = profile_id
+    return redirect(url_for("index"))
+
+
+@app.route("/profiles/switch")
+def switch_profile():
+    session.pop("profile_id", None)
+    return redirect(url_for("profiles_list"))
 
 
 VALID_OCCASIONS = ("casual", "work", "formal", "gym")
@@ -78,10 +168,10 @@ def group_closet_by_category(closet: list) -> list:
 
 @app.route("/")
 def index():
-    closet = load_closet()
+    closet = load_closet(current_profile_id())
 
     try:
-        wear_stats = compute_wear_stats(get_history())
+        wear_stats = compute_wear_stats(get_history(current_profile_id()))
     except Exception:
         wear_stats = {}  # history unavailable shouldn't block viewing the closet
     for item in closet:
@@ -169,6 +259,7 @@ def _handle_single_upload(item_id: str, processed_path: str, image_key: str):
 
     item = {
         "id": item_id,
+        "profile_id": current_profile_id(),
         "image_key": image_key,
         "image_url": image_url,
         "type": attrs.get("type", "unknown"),
@@ -220,6 +311,7 @@ def _handle_multi_upload(item_id: str, processed_path: str, image_key: str):
         # each entry just points at the same image_key/image_url.
         item = {
             "id": uuid.uuid4().hex if i > 0 else item_id,
+            "profile_id": current_profile_id(),
             "image_key": image_key,
             "image_url": image_url,
             "type": attrs.get("type", "unknown"),
@@ -283,7 +375,7 @@ def suggest():
         flash(f"Could not fetch weather: {e}")
         return redirect(url_for("index"))
 
-    closet = load_closet()
+    closet = load_closet(current_profile_id())
     if not closet:
         flash("Your closet is empty — upload some clothes first.")
         return redirect(url_for("index"))
@@ -291,7 +383,7 @@ def suggest():
     filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
 
     try:
-        bias = compute_warmth_bias(get_history())
+        bias = compute_warmth_bias(get_history(current_profile_id()))
     except Exception:
         bias = 0  # history unavailable shouldn't block getting a suggestion
 
@@ -316,6 +408,7 @@ def log_outfit_route():
     target_warmth_raw = request.form.get("target_warmth")
     entry = {
         "log_date": date.today().isoformat(),
+        "profile_id": current_profile_id(),
         "occasion": request.form.get("occasion") if request.form.get("occasion") in VALID_OCCASIONS else "casual",
         "top_id": request.form.get("top_id") or None,
         "bottom_id": request.form.get("bottom_id") or None,
@@ -341,7 +434,7 @@ def history_feedback(log_date):
         flash("Invalid feedback value.")
         return redirect(url_for("history"))
     try:
-        save_feedback(log_date, felt)
+        save_feedback(current_profile_id(), log_date, felt)
         flash("Thanks — future suggestions will take that into account.")
     except Exception as e:
         flash(f"Could not save feedback: {e}")
@@ -350,8 +443,8 @@ def history_feedback(log_date):
 
 @app.route("/history")
 def history():
-    entries = get_history()
-    closet_by_id = {item["id"]: item for item in load_closet()}
+    entries = get_history(current_profile_id())
+    closet_by_id = {item["id"]: item for item in load_closet(current_profile_id())}
 
     for entry in entries:
         for zone in ("top", "bottom", "feet", "head"):
@@ -372,7 +465,7 @@ def week():
         flash(f"Could not fetch forecast: {e}")
         return redirect(url_for("index"))
 
-    closet = load_closet()
+    closet = load_closet(current_profile_id())
     if not closet:
         flash("Your closet is empty — upload some clothes first.")
         return redirect(url_for("index"))
@@ -380,7 +473,7 @@ def week():
     filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
 
     try:
-        bias = compute_warmth_bias(get_history())
+        bias = compute_warmth_bias(get_history(current_profile_id()))
     except Exception:
         bias = 0
 
@@ -413,7 +506,7 @@ def packing_list():
         flash(f"Could not fetch forecast: {e}")
         return redirect(url_for("index"))
 
-    closet = load_closet()
+    closet = load_closet(current_profile_id())
     if not closet:
         flash("Your closet is empty — upload some clothes first.")
         return redirect(url_for("index"))
@@ -421,7 +514,7 @@ def packing_list():
     filtered_closet, occasion_note = filter_by_occasion(closet, occasion)
 
     try:
-        bias = compute_warmth_bias(get_history())
+        bias = compute_warmth_bias(get_history(current_profile_id()))
     except Exception:
         bias = 0
 

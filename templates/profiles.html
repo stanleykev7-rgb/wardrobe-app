@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Who's this?</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'IBM Plex Sans', sans-serif; background: #EDEEE7; color: #22262B; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .wrap { text-align: center; padding: 40px 20px; max-width: 640px; }
+    h1 { font-family: 'Fraunces', serif; font-size: 1.8rem; margin-bottom: 32px; }
+    .grid { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; margin-bottom: 30px; }
+    .profile-card { background: none; border: none; cursor: pointer; text-align: center; padding: 0; }
+    .avatar {
+      width: 84px; height: 84px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 600; color: white; margin: 0 auto 10px;
+      transition: transform 0.15s;
+    }
+    .profile-card:hover .avatar { transform: scale(1.06); }
+    .profile-name { font-size: 0.9rem; font-weight: 500; }
+    .profile-gender { font-size: 0.72rem; color: #5B5E58; }
+    .add-card .avatar { background: #FCFBF8; border: 2px dashed #C7CCD3; color: #8A8D88; font-size: 2rem; font-weight: 400; }
+    .flash { background: #FFFBEB; border: 1px solid #FCD34D; color: #92400E; padding: 10px 14px; border-radius: 10px; margin-bottom: 20px; font-size: 0.85rem; }
+    a.add-link { text-decoration: none; color: inherit; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Who's using Wardrobe?</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}{% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}{% endif %}
+    {% endwith %}
+    <div class="grid">
+      {% for p in profiles %}
+        <form action="{{ url_for('select_profile', profile_id=p.id) }}" method="post" class="profile-card-form">
+          <button type="submit" class="profile-card">
+            <div class="avatar" style="background: {{ ['#33517E', '#A6433A', '#5C7A5E', '#C9962E', '#6B4E86'][loop.index0 % 5] }};">{{ p.name[0]|upper }}</div>
+            <div class="profile-name">{{ p.name }}</div>
+            <div class="profile-gender">{{ p.gender|capitalize }}</div>
+          </button>
+        </form>
+      {% endfor %}
+      <a href="{{ url_for('new_profile') }}" class="add-link">
+        <div class="profile-card add-card">
+          <div class="avatar">+</div>
+          <div class="profile-name">Add profile</div>
+        </div>
+      </a>
+    </div>
+  </div>
+</body>
+</html>

@@ -77,6 +77,11 @@
       width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper);
       cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); flex-shrink: 0;
     }
+    .profile-pill {
+      font-size: 0.78rem; font-weight: 600; color: var(--ink); background: var(--paper); border: 1px solid var(--line);
+      padding: 6px 12px; border-radius: 999px; text-decoration: none; white-space: nowrap;
+    }
+    .profile-pill:hover { border-color: var(--indigo); color: var(--indigo); }
     @media (max-width: 480px) {
       .tabs { overflow-x: auto; max-width: 70vw; }
       .tabs a { padding: 6px 10px; font-size: 0.78rem; white-space: nowrap; }
@@ -310,6 +315,9 @@
         <a href="{{ url_for('packing_list') }}" class="show-loading-link {{ 'active' if request.endpoint == 'packing_list' }}" data-loading-message="Planning your trip…">Packing</a>
         <a href="{{ url_for('history') }}" class="{{ 'active' if request.endpoint == 'history' }}">History</a>
       </div>
+      {% if current_profile %}
+        <a href="{{ url_for('switch_profile') }}" class="profile-pill" title="Switch profile">{{ current_profile.name }}</a>
+      {% endif %}
       <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" type="button">
         <svg id="theme-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 12.5A9 9 0 1 1 11.5 3a7 7 0 0 0 9.5 9.5z"/>
