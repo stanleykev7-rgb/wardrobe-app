@@ -175,12 +175,20 @@ create table if not exists profiles (
 alter table items add column if not exists occasion text default 'casual';
 alter table items add column if not exists in_laundry boolean default false;
 alter table items add column if not exists profile_id text;
+alter table items add column if not exists occasions text[] default array['casual'];
 alter table outfit_history add column if not exists profile_id text;
 
 alter table items enable row level security;
 alter table outfit_history enable row level security;
 alter table profiles enable row level security;
 ```
+
+`occasions` (plural, an array) replaces the older single-value `occasion`
+column - a garment can now be tagged as multiple things at once (e.g. a
+blazer as both "work" and "semi_formal"). The old `occasion` column is
+left in place and untouched for backward compatibility; the app reads
+`occasions` first and only falls back to it for rows saved before this
+update.
 
 ### Step 2 - create your first profile through the app
 

@@ -46,7 +46,7 @@
                   <div class="tag-specs">
                     <div class="tag-spec-row"><span class="tag-spec-label">Zone</span><span class="tag-spec-val">{{ item.zone|capitalize }}</span></div>
                     <div class="tag-spec-row"><span class="tag-spec-label">Warmth</span><span class="tag-spec-val">{{ item.warmth }} / 10</span></div>
-                    <div class="tag-spec-row"><span class="tag-spec-label">Occasion</span><span class="tag-spec-val">{{ (item.occasion or 'casual')|capitalize }}</span></div>
+                    <div class="tag-spec-row"><span class="tag-spec-label">Occasions</span><span class="tag-spec-val">{{ get_item_occasions(item)|map('replace', '_', ' ')|map('capitalize')|join(', ') }}</span></div>
                     <div class="tag-spec-row"><span class="tag-spec-label">Worn</span><span class="tag-spec-val">{{ item.wear_count }}x{% if item.last_worn %} · last {{ item.last_worn }}{% endif %}</span></div>
                     {% if item.waterproof %}<div class="tag-spec-row"><span class="tag-spec-label">Waterproof</span><span class="tag-spec-val">Yes</span></div>{% endif %}
                   </div>
@@ -76,12 +76,16 @@
                       </div>
                     </div>
                     <div>
-                      <label>Occasion</label>
-                      <select name="occasion">
-                        {% for o in ['casual', 'work', 'formal', 'gym'] %}
-                          <option value="{{ o }}" {{ 'selected' if (item.occasion or 'casual') == o }}>{{ o|capitalize }}</option>
+                      <label>Occasions (select all that apply)</label>
+                      <div class="occasion-checks">
+                        {% set item_occasions = get_item_occasions(item) %}
+                        {% for o in ALL_OCCASIONS %}
+                          <label class="occasion-check">
+                            <input type="checkbox" name="occasions" value="{{ o }}" {{ 'checked' if o in item_occasions }}>
+                            {{ o|replace('_', ' ')|capitalize }}
+                          </label>
                         {% endfor %}
-                      </select>
+                      </div>
                     </div>
                     <label class="waterproof-row">
                       <input type="checkbox" name="waterproof" {{ 'checked' if item.waterproof }}> Waterproof

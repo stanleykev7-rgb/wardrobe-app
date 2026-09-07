@@ -27,7 +27,7 @@ Identify it and respond with ONLY a JSON object (no markdown, no extra text) wit
   "zone": "one of: head, top, bottom, feet",
   "warmth": integer from 1 (very light/summer) to 10 (very warm/heavy winter),
   "waterproof": true or false,
-  "occasion": "one of: casual, work, formal, gym"
+  "occasions": ["array of ALL applicable occasions from: casual, work, semi_formal, formal, party, gym"]
 }
 
 Rules:
@@ -37,9 +37,12 @@ Rules:
 - If it's worn on the head (hat, beanie, cap) use "head".
 - If it's footwear (shoes, boots, sandals) use "feet".
 - "warmth" should reflect how much insulation the item provides, not just its color.
-- "occasion": "work" for business/office wear (blazers, dress shirts, slacks), "formal" for
-  suits/dresses/formal shoes, "gym" for athletic wear (leggings, sneakers, sports tops),
-  "casual" for everyday wear - default to "casual" if genuinely unclear.
+- "occasions" is a LIST, not a single value - most garments genuinely suit more than
+  one occasion (e.g. a plain button-down shirt is both "work" AND "casual"; a blazer
+  might be "work" AND "semi_formal"). Include every occasion it reasonably fits.
+  "work" = business/office wear, "semi_formal" = smart-casual/dressy but not black-tie,
+  "formal" = suits/gowns/tuxedo-level formality, "party" = going-out/statement pieces,
+  "gym" = athletic wear, "casual" = everyday wear. Always include at least one.
 - If you cannot clearly identify the garment, make your best guess rather than refusing.
 """
 
@@ -136,7 +139,7 @@ ONLY a JSON object (no markdown, no extra text) with this exact shape:
       "zone": "one of: head, top, bottom, feet",
       "warmth": integer from 1 (very light/summer) to 10 (very warm/heavy winter),
       "waterproof": true or false,
-      "occasion": "one of: casual, work, formal, gym"
+      "occasions": ["array of ALL applicable occasions from: casual, work, semi_formal, formal, party, gym"]
     }
   ]
 }
@@ -146,6 +149,8 @@ Rules:
 - "zone" must be exactly one of: head, top, bottom, feet (see the single-item
   rules: torso items are "top", legs are "bottom", headwear is "head",
   footwear is "feet").
+- "occasions" is a LIST - include every occasion a garment reasonably fits
+  (most items suit more than one), always at least one.
 - If you genuinely see only one item, return an array with just that one item.
 - If you can't identify anything wearable in the photo, return {"items": []}.
 - Do not invent items that aren't visible.
@@ -220,9 +225,14 @@ def _sanitize(data: dict) -> dict:
     if zone not in ("head", "top", "bottom", "feet"):
         zone = "top"
 
-    occasion = str(data.get("occasion", "casual")).lower()
-    if occasion not in ("casual", "work", "formal", "gym"):
-        occasion = "casual"
+    valid_occasions = ("casual", "work", "semi_formal", "formal", "party", "gym")
+    raw_occasions = data.get("occasions")
+    if not isinstance(raw_occasions, list):
+        raw_occasions = []
+    occasions = [str(o).lower() for o in raw_occasions if str(o).lower() in valid_occasions]
+    occasions = list(dict.fromkeys(occasions))  # dedupe, preserve order
+    if not occasions:
+        occasions = ["casual"]
 
     try:
         warmth = int(data.get("warmth", 5))
@@ -236,5 +246,5 @@ def _sanitize(data: dict) -> dict:
         "zone": zone,
         "warmth": warmth,
         "waterproof": bool(data.get("waterproof", False)),
-        "occasion": occasion,
+        "occasions": occasions,
     }

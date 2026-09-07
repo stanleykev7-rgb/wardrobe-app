@@ -10,8 +10,8 @@
   <form action="{{ url_for('suggest') }}" method="get" class="show-loading-form filter-row" data-loading-message="Checking today's weather and styling an outfit…">
     <input type="text" name="city" placeholder="City,CountryCode e.g. Kochi,IN" value="{{ city }}">
     <select name="occasion">
-      {% for o in ['any', 'casual', 'work', 'formal', 'gym'] %}
-        <option value="{{ o }}" {{ 'selected' if occasion == o }}>{{ 'Any occasion' if o == 'any' else o|capitalize }}</option>
+      {% for o in ['any', 'casual', 'work', 'semi_formal', 'formal', 'party', 'gym'] %}
+        <option value="{{ o }}" {{ 'selected' if occasion == o }}>{{ 'Any occasion' if o == 'any' else o|replace('_', ' ')|capitalize }}</option>
       {% endfor %}
     </select>
     <input type="submit" value="Update">

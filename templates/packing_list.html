@@ -12,8 +12,8 @@
       {% endfor %}
     </select>
     <select name="occasion">
-      {% for o in ['any', 'casual', 'work', 'formal', 'gym'] %}
-        <option value="{{ o }}" {{ 'selected' if occasion == o }}>{{ 'Any occasion' if o == 'any' else o|capitalize }}</option>
+      {% for o in ['any', 'casual', 'work', 'semi_formal', 'formal', 'party', 'gym'] %}
+        <option value="{{ o }}" {{ 'selected' if occasion == o }}>{{ 'Any occasion' if o == 'any' else o|replace('_', ' ')|capitalize }}</option>
       {% endfor %}
     </select>
     <input type="submit" value="Plan trip">

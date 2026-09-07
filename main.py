@@ -123,7 +123,22 @@ def switch_profile():
     return redirect(url_for("profiles_list"))
 
 
-VALID_OCCASIONS = ("casual", "work", "formal", "gym")
+VALID_OCCASIONS = ("casual", "work", "semi_formal", "formal", "party", "gym")
+
+
+def get_item_occasions(item: dict) -> list:
+    """Reads an item's occasions list, falling back gracefully for items
+    saved before multi-occasion tagging existed (which only had a single
+    'occasion' string, or nothing at all)."""
+    occasions = item.get("occasions")
+    if isinstance(occasions, list) and occasions:
+        return occasions
+    legacy = item.get("occasion")
+    return [legacy] if legacy else ["casual"]
+
+
+app.jinja_env.globals["get_item_occasions"] = get_item_occasions
+app.jinja_env.globals["ALL_OCCASIONS"] = ("casual", "work", "semi_formal", "formal", "party", "gym")
 
 
 def filter_by_occasion(closet: list, occasion: str) -> tuple:
@@ -132,7 +147,7 @@ def filter_by_occasion(closet: list, occasion: str) -> tuple:
     suggest from, rather than dead-ending on an empty result."""
     if not occasion or occasion == "any":
         return closet, None
-    filtered = [i for i in closet if i.get("occasion", "casual") == occasion]
+    filtered = [i for i in closet if occasion in get_item_occasions(i)]
     if not filtered:
         return closet, f"No {occasion} items found in your closet — showing suggestions from your full closet instead."
     return filtered, None
@@ -234,7 +249,7 @@ def _upload_processed_photo(processed_path: str, image_key: str) -> str:
 
 
 def _default_attrs() -> dict:
-    return {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasion": "casual"}
+    return {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasions": ["casual"]}
 
 
 def _handle_single_upload(item_id: str, processed_path: str, image_key: str):
@@ -267,7 +282,7 @@ def _handle_single_upload(item_id: str, processed_path: str, image_key: str):
         "warmth": attrs.get("warmth", 5),
         "zone": attrs.get("zone", "top"),
         "waterproof": attrs.get("waterproof", False),
-        "occasion": attrs.get("occasion", "casual"),
+        "occasions": attrs.get("occasions", ["casual"]),
         "in_laundry": False,
         "needs_review": needs_review,
         "added_at": datetime.utcnow().isoformat(),
@@ -319,7 +334,7 @@ def _handle_multi_upload(item_id: str, processed_path: str, image_key: str):
             "warmth": attrs.get("warmth", 5),
             "zone": attrs.get("zone", "top"),
             "waterproof": attrs.get("waterproof", False),
-            "occasion": attrs.get("occasion", "casual"),
+            "occasions": attrs.get("occasions", ["casual"]),
             "in_laundry": False,
             "needs_review": needs_review,
             "added_at": datetime.utcnow().isoformat(),
@@ -342,7 +357,7 @@ def edit_item(item_id):
         "zone": request.form.get("zone") if request.form.get("zone") in ("head", "top", "bottom", "feet") else "top",
         "warmth": max(1, min(10, int(request.form.get("warmth", 5) or 5))),
         "waterproof": request.form.get("waterproof") == "on",
-        "occasion": request.form.get("occasion") if request.form.get("occasion") in VALID_OCCASIONS else "casual",
+        "occasions": [o for o in request.form.getlist("occasions") if o in VALID_OCCASIONS] or ["casual"],
         "needs_review": False,
     }
     update_item(item_id, updates)
