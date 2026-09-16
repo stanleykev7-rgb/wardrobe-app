@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Swipe · Wardrobe{% endblock %}
+{% block content %}
+<section class="swipe-page">
+  <h1 class="page-title">Swipe your style</h1>
+  <p class="swipe-subtitle">Like, dislike, or save outfit combos to help teach the app your taste.</p>
+
+  <div class="swipe-card" id="swipe-card"
+       data-city="{{ city }}"
+       data-top-id="{{ picks.top.id if picks.top else '' }}"
+       data-bottom-id="{{ picks.bottom.id if picks.bottom else '' }}"
+       data-feet-id="{{ picks.feet.id if picks.feet else '' }}"
+       data-head-id="{{ picks.head.id if picks.head else '' }}">
+
+    <!-- Reuses the existing .flatlay/.fl-item pattern from suggest.html
+         verbatim (see UI_GUIDELINES.md) rather than inventing a new
+         visual language for outfit-combo display. -->
+    <div class="flatlay">
+      {% for zone in ["top", "bottom", "feet", "head"] %}
+        {% set item = picks.get(zone) %}
+        <div class="fl-item fl-{{ zone }}" id="fl-{{ zone }}">
+          {% if item and item.image_url %}
+            <img src="{{ item.image_url }}" alt="{{ item.type or zone }}">
+            <div class="label">{{ item.color }} {{ item.type }}</div>
+          {% else %}
+            <div class="fl-item-empty">No {{ zone }} pick</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <p class="swipe-target-warmth">Target warmth: <strong>{{ target_warmth }}/10</strong></p>
+
+    <div class="swipe-actions">
+      <button type="button" class="swipe-btn swipe-btn-dislike" data-decision="dislike" aria-label="Dislike this outfit">✕ Dislike</button>
+      <button type="button" class="swipe-btn swipe-btn-save" data-decision="save" aria-label="Save this outfit">★ Save</button>
+      <button type="button" class="swipe-btn swipe-btn-like" data-decision="like" aria-label="Like this outfit">♥ Like</button>
+    </div>
+
+    <p class="swipe-error" id="swipe-error" style="display:none;"></p>
+  </div>
+</section>
+
+<!--
+  Scoped JS exception — see DECISIONS.md ADR-016. This is the ONLY page
+  in the app that uses fetch/AJAX; every other interaction stays a
+  full-page-reload form on purpose. Keep this pattern contained to this
+  file rather than reusing it elsewhere without the same explicit
+  architectural consideration.
+-->
+<script>
+(function () {
+  var card = document.getElementById("swipe-card");
+  var errorEl = document.getElementById("swipe-error");
+  var buttons = card.querySelectorAll(".swipe-btn");
+
+  function currentPicks() {
+    return {
+      top: card.dataset.topId || null,
+      bottom: card.dataset.bottomId || null,
+      feet: card.dataset.feetId || null,
+      head: card.dataset.headId || null,
+    };
+  }
+
+  function renderZone(zone, item) {
+    var el = document.getElementById("fl-" + zone);
+    if (item && item.image_url) {
+      el.innerHTML = '<img src="' + item.image_url + '" alt="' + (item.type || zone) + '">' +
+        '<div class="label">' + (item.color || '') + ' ' + (item.type || '') + '</div>';
+      card.dataset[zone + "Id"] = item.id;
+    } else {
+      el.innerHTML = '<div class="fl-item-empty">No ' + zone + ' pick</div>';
+      card.dataset[zone + "Id"] = "";
+    }
+  }
+
+  function setButtonsEnabled(enabled) {
+    buttons.forEach(function (b) { b.disabled = !enabled; });
+  }
+
+  function vote(decision) {
+    errorEl.style.display = "none";
+    setButtonsEnabled(false);
+
+    fetch("/swipe/vote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision: decision,
+        picks: currentPicks(),
+        city: card.dataset.city,
+      }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        if (!result.ok) {
+          throw new Error(result.data.error || "Something went wrong.");
+        }
+        ["top", "bottom", "feet", "head"].forEach(function (zone) {
+          renderZone(zone, result.data.picks[zone]);
+        });
+        var warmthEl = card.querySelector(".swipe-target-warmth strong");
+        if (warmthEl) { warmthEl.textContent = result.data.target_warmth + "/10"; }
+      })
+      .catch(function (err) {
+        errorEl.textContent = "Couldn't load the next outfit — " + err.message + " Try again.";
+        errorEl.style.display = "block";
+      })
+      .finally(function () {
+        setButtonsEnabled(true);
+      });
+  }
+
+  buttons.forEach(function (btn) {
+    btn.addEventListener("click", function () { vote(btn.dataset.decision); });
+  });
+})();
+</script>
+{% endblock %}
