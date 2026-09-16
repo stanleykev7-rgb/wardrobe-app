@@ -1,9 +1,22 @@
 """
 Generates a photorealistic image of a person wearing today's suggested
-outfit, via the Hugging Face Inference API (text-to-image).
+outfit, via Hugging Face's Inference Providers — specifically the
+"hf-inference" provider, HF's own hosted free-tier service (this used to
+be called "Inference API (serverless)" before HF's Inference Providers
+launch, and its raw REST domain changed from api-inference.huggingface.co
+to router.huggingface.co as part of that move).
 
 This REVERSES ADR-008 (the abstract SVG mannequin) per explicit user
 request — see DECISIONS.md ADR-015 for the full rationale.
+
+Uses the `huggingface_hub` client library rather than raw HTTP requests,
+matching this project's existing convention of using the vendor's own SDK
+for model-hosting APIs that evolve over time (see groq_classifier.py /
+outfit_ai.py's use of the `groq` package instead of raw requests to
+Groq's REST API). HF's endpoint domain has already changed once since
+this project started; pinning to the client library insulates this code
+from another such change, since HF maintains the library against
+whatever the current routing is.
 
 IMPORTANT FIDELITY LIMITATION (documented in ADR-015 and KNOWN_ISSUES.md):
 no free/no-credit-card text-to-image service can transplant an actual
@@ -12,8 +25,7 @@ garment-transfer model (IDM-VTON, OOTDiffusion, or a paid commercial try-on
 API). This module instead builds a text prompt from each zone's detected
 TYPE and COLOR — the exact same data mannequin.py already uses — so the
 avatar is a photorealistic-looking approximation, not literal-garment
-rendering. This is a strictly-better-looking version of what the mannequin
-already conceptually does, not a strictly-more-accurate one.
+rendering.
 
 Fails gracefully, per this project's established principle (CONTRIBUTING.md):
 any error (missing token, network failure, model cold-start, rate limit,
@@ -22,24 +34,31 @@ to the SVG mannequin — the suggestion page must never come up empty, exactly
 like outfit_ai.py's OutfitAIFailed -> recommend.suggest_outfit() pattern.
 """
 import os
+import io
 import time
 
-import requests
-
+from huggingface_hub import InferenceClient
+try:
+    from huggingface_hub.errors import HfHubHTTPError
+except ImportError:  # older huggingface_hub versions exposed this under .utils instead
+    from huggingface_hub.utils import HfHubHTTPError
 
 HF_API_TOKEN = os.environ.get("HF_API_TOKEN")
-HF_AVATAR_MODEL = os.environ.get("HF_AVATAR_MODEL", "stabilityai/stable-diffusion-xl-base-1.0")
-HF_API_URL_TEMPLATE = "https://api-inference.huggingface.co/models/{model}"
 
-# HF's shared free-tier inference endpoints cold-start a model that hasn't
-# been called recently (returns 503 with an estimated_time), which is a
-# fundamentally different situation than Groq's rate limits but still
-# warrants a real retry rather than an immediate failure. Kept as its own
-# named constants (not reusing groq_classifier's MAX_RETRIES/BASE_DELAY_SECONDS)
-# since the two services' failure modes and appropriate backoff differ.
+# stabilityai/stable-diffusion-3-medium-diffusers is Hugging Face's own
+# documented example model for the free "hf-inference" provider (see
+# https://huggingface.co/docs/inference-providers/en/providers/hf-inference).
+# Kept as an env var, same precedent as GROQ_VISION_MODEL/GROQ_TEXT_MODEL,
+# since which models the free provider actually serves changes over time.
+HF_AVATAR_MODEL = os.environ.get("HF_AVATAR_MODEL", "stabilityai/stable-diffusion-3-medium-diffusers")
+
+# HF's free "hf-inference" provider cold-starts a model that hasn't been
+# called recently (returns 503, sometimes 504 on gateway timeout) and can
+# also rate-limit (429) - both worth a real retry, unlike a genuine 4xx
+# (bad token, bad model name) which retrying won't fix.
 MAX_RETRIES = 2
 BASE_DELAY_SECONDS = 3
-REQUEST_TIMEOUT_SECONDS = 60
+RETRYABLE_STATUS_CODES = (429, 503, 504)
 
 ZONE_LABELS = {"top": "top", "bottom": "bottom", "feet": "shoes", "head": "headwear"}
 
@@ -78,9 +97,14 @@ def _prompt_for_picks(picks: dict) -> str:
     )
 
 
+def _status_code_of(error: HfHubHTTPError):
+    response = getattr(error, "response", None)
+    return getattr(response, "status_code", None) if response is not None else None
+
+
 def generate_avatar_image(picks: dict) -> bytes:
-    """Returns raw image bytes (typically JPEG or PNG, whatever HF returns)
-    on success. Raises AvatarGenerationFailed on any failure."""
+    """Returns raw JPEG image bytes on success. Raises
+    AvatarGenerationFailed on any failure."""
     if not HF_API_TOKEN:
         raise AvatarGenerationFailed("HF_API_TOKEN is not configured")
 
@@ -88,35 +112,25 @@ def generate_avatar_image(picks: dict) -> bytes:
     if not prompt:
         raise AvatarGenerationFailed("No items picked — nothing to render")
 
-    url = HF_API_URL_TEMPLATE.format(model=HF_AVATAR_MODEL)
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
+    client = InferenceClient(provider="hf-inference", api_key=HF_API_TOKEN)
     last_error = "unknown error"
 
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response = requests.post(
-                url, headers=headers, json={"inputs": prompt}, timeout=REQUEST_TIMEOUT_SECONDS
-            )
-        except requests.RequestException as e:
-            last_error = f"network error: {e}"
-            if attempt < MAX_RETRIES:
-                time.sleep(BASE_DELAY_SECONDS * (2 ** attempt))
-            continue
-
-        content_type = response.headers.get("content-type", "")
-        if response.status_code == 200 and content_type.startswith("image/"):
-            return response.content
-
-        # 503 = model loading/cold-starting on HF's shared free infra —
-        # worth a real retry. 429 = rate limited — also worth a retry with
-        # backoff. Anything else (401 bad token, 400 bad model name, etc.)
-        # won't be fixed by retrying, so fail fast instead of burning time.
-        if response.status_code in (503, 429):
-            last_error = f"HTTP {response.status_code}: {response.text[:200]}"
-            if attempt < MAX_RETRIES:
-                time.sleep(BASE_DELAY_SECONDS * (2 ** attempt))
-            continue
-
-        raise AvatarGenerationFailed(f"HF API error {response.status_code}: {response.text[:200]}")
+            image = client.text_to_image(prompt, model=HF_AVATAR_MODEL)
+            buf = io.BytesIO()
+            image.save(buf, format="JPEG")
+            return buf.getvalue()
+        except HfHubHTTPError as e:
+            status = _status_code_of(e)
+            last_error = f"HTTP {status}: {e}"
+            if status not in RETRYABLE_STATUS_CODES:
+                # A genuine 4xx that isn't a rate limit (bad token, bad
+                # model name, etc.) won't be fixed by retrying.
+                raise AvatarGenerationFailed(last_error)
+        except Exception as e:
+            last_error = f"error: {e}"
+        if attempt < MAX_RETRIES:
+            time.sleep(BASE_DELAY_SECONDS * (2 ** attempt))
 
     raise AvatarGenerationFailed(f"Exhausted retries: {last_error}")

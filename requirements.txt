@@ -5,3 +5,4 @@ groq==1.1.2
 gunicorn==22.0.0
 supabase==2.9.1
 Pillow==10.4.0
+huggingface_hub==1.12.2
