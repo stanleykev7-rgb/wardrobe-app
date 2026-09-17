@@ -23,6 +23,13 @@
     .add-card .avatar { background: #FCFBF8; border: 2px dashed #C7CCD3; color: #8A8D88; font-size: 2rem; font-weight: 400; }
     .flash { background: #FFFBEB; border: 1px solid #FCD34D; color: #92400E; padding: 10px 14px; border-radius: 10px; margin-bottom: 20px; font-size: 0.85rem; }
     a.add-link { text-decoration: none; color: inherit; }
+    .profile-card-wrap { position: relative; }
+    .delete-profile-form { position: absolute; top: -4px; right: -4px; margin: 0; }
+    .delete-profile-btn {
+      width: 22px; height: 22px; border-radius: 50%; border: none; background: #FCFBF8; color: #8A8D88;
+      font-size: 0.85rem; line-height: 1; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+    .delete-profile-btn:hover { background: #A6433A; color: white; }
   </style>
 </head>
 <body>
@@ -33,13 +40,19 @@
     {% endwith %}
     <div class="grid">
       {% for p in profiles %}
-        <form action="{{ url_for('select_profile', profile_id=p.id) }}" method="post" class="profile-card-form">
-          <button type="submit" class="profile-card">
-            <div class="avatar" style="background: {{ ['#33517E', '#A6433A', '#5C7A5E', '#C9962E', '#6B4E86'][loop.index0 % 5] }};">{{ p.name[0]|upper }}</div>
-            <div class="profile-name">{{ p.name }}</div>
-            <div class="profile-gender">{{ p.gender|capitalize }}</div>
-          </button>
-        </form>
+        <div class="profile-card-wrap">
+          <form action="{{ url_for('select_profile', profile_id=p.id) }}" method="post" class="profile-card-form">
+            <button type="submit" class="profile-card">
+              <div class="avatar" style="background: {{ ['#33517E', '#A6433A', '#5C7A5E', '#C9962E', '#6B4E86'][loop.index0 % 5] }};">{{ p.name[0]|upper }}</div>
+              <div class="profile-name">{{ p.name }}</div>
+              <div class="profile-gender">{{ p.gender|capitalize }}</div>
+            </button>
+          </form>
+          <form action="{{ url_for('delete_profile_route', profile_id=p.id) }}" method="post" class="delete-profile-form"
+                onsubmit="return confirm('Delete {{ p.name }}&#39;s profile? This permanently removes their entire closet, outfit history, and swipe data. This cannot be undone.');">
+            <button type="submit" class="delete-profile-btn" aria-label="Delete {{ p.name }}'s profile" title="Delete profile">&times;</button>
+          </form>
+        </div>
       {% endfor %}
       <a href="{{ url_for('new_profile') }}" class="add-link">
         <div class="profile-card add-card">

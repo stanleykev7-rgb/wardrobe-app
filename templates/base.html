@@ -205,6 +205,20 @@
     .upload-text p { margin: 0 0 10px; color: var(--ink-soft); font-size: 0.85rem; }
     .multi-upload-check { display: block; margin-top: 10px; font-size: 0.78rem; color: var(--ink-soft); }
 
+    .upload-input-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+    .upload-choice-btn {
+      display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+      padding: 8px 14px; border-radius: 9px; border: 1px solid var(--indigo);
+      color: var(--indigo); background: var(--card); font-size: 0.85rem; font-weight: 600;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .upload-choice-btn:hover { background: var(--indigo-tint); }
+    .upload-choice-btn input[type=file] {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    .upload-file-list { margin: 0 0 4px; font-size: 0.78rem; color: var(--ink-soft); min-height: 1em; }
+
     button, input[type=submit] {
       font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 0.85rem;
       border: none; border-radius: 10px; padding: 9px 16px; cursor: pointer;

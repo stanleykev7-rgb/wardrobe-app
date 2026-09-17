@@ -1,4 +1,5 @@
 import os
+import sys
 import uuid
 from datetime import datetime, date
 
@@ -25,6 +26,21 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 
+if app.secret_key == "dev-secret-change-me":
+    # See KNOWN_ISSUES.md #1's compounding finding: the session cookie
+    # storing profile_id is the only thing gating access to a profile's
+    # data. If it's signed with this hardcoded, publicly-visible string,
+    # anyone can forge a valid session cookie for any profile_id without
+    # ever going through /profiles/select. Printed to stderr (not raised)
+    # so an existing deployment that hasn't set this yet doesn't suddenly
+    # start refusing to boot - but it should be set for real use.
+    print(
+        "WARNING: FLASK_SECRET_KEY is not set - using an insecure default. "
+        "Session cookies (which gate access to profile data) can be forged. "
+        "Set FLASK_SECRET_KEY to a real random value in your deployment environment.",
+        file=sys.stderr,
+    )
+
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 
 # Temp scratch space only - the real, persistent copy lives in R2.
@@ -41,7 +57,7 @@ VALID_GENDERS = ("men", "women", "unisex")
 # Routes reachable before a profile is selected - everything else redirects
 # to pick/create one first. keep-alive is excluded since it's hit by a
 # machine (GitHub Actions), not a browsing person.
-_PROFILE_EXEMPT_ENDPOINTS = {"profiles_list", "new_profile", "select_profile", "keep_alive", "static"}
+_PROFILE_EXEMPT_ENDPOINTS = {"profiles_list", "new_profile", "select_profile", "delete_profile_route", "keep_alive", "static"}
 
 
 @app.before_request
@@ -118,6 +134,44 @@ def new_profile():
 def select_profile(profile_id):
     session["profile_id"] = profile_id
     return redirect(url_for("index"))
+
+
+@app.route("/profiles/<profile_id>/delete", methods=["POST"])
+def delete_profile_route(profile_id):
+    """
+    Deletes a profile and cascades: every item it owns (via the existing
+    shared-photo-safe delete_item — see KNOWN_ISSUES.md #1a), every
+    outfit_history row, and every outfit_swipes row. This is an explicit,
+    user-confirmed destructive action (native confirm() dialog on the
+    delete button, per this app's established convention — see
+    UI_GUIDELINES.md) — deleting a profile intentionally deletes
+    everything that was only ever reachable through it, rather than
+    orphaning that data (see KNOWN_ISSUES.md #11).
+    """
+    for item in load_closet(profile_id):
+        delete_item(item["id"])
+
+    try:
+        storage_supabase.delete_history_for_profile(profile_id)
+    except Exception as e:
+        flash(f"Could not delete outfit history: {e}")
+
+    try:
+        storage_supabase.delete_swipes_for_profile(profile_id)
+    except Exception as e:
+        flash(f"Could not delete swipe data: {e}")
+
+    try:
+        storage_supabase.delete_profile_row(profile_id)
+    except Exception as e:
+        flash(f"Could not delete profile: {e}")
+        return redirect(url_for("profiles_list"))
+
+    if session.get("profile_id") == profile_id:
+        session.pop("profile_id", None)
+
+    flash("Profile deleted.")
+    return redirect(url_for("profiles_list"))
 
 
 @app.route("/profiles/switch")
@@ -203,41 +257,54 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    if "photo" not in request.files:
-        flash("No file part in the request.")
-        return redirect(url_for("index"))
-
-    file = request.files["photo"]
-    if file.filename == "":
+    # request.files.getlist("photo") returns every file submitted under
+    # that field name - normally just one, but the upload form now also
+    # supports selecting several photos at once (batch upload) and/or a
+    # separate camera-capture input, both sharing the same field name.
+    files = [f for f in request.files.getlist("photo") if f and f.filename]
+    if not files:
         flash("No file selected.")
         return redirect(url_for("index"))
 
-    if not allowed_file(file.filename):
-        flash("Unsupported file type. Use png, jpg, jpeg, or webp.")
-        return redirect(url_for("index"))
-
     is_multi = request.form.get("multi") == "on"
+    all_saved_items = []
+    skipped = []  # [(filename, reason), ...] for photos that couldn't be processed at all
 
-    item_id = uuid.uuid4().hex
-    raw_path = os.path.join(TMP_DIR, f"{item_id}_raw")
-    processed_path = os.path.join(TMP_DIR, f"{item_id}.jpg")
-    file.save(raw_path)
+    for file in files:
+        if not allowed_file(file.filename):
+            skipped.append((file.filename, "unsupported file type"))
+            continue
 
-    # Resize/compress before it ever touches storage or the Groq API.
-    try:
-        process_image(raw_path, processed_path)
-    except Exception as e:
-        flash(f"Could not process image: {e}")
-        return redirect(url_for("index"))
-    finally:
-        if os.path.exists(raw_path):
-            os.remove(raw_path)
+        item_id = uuid.uuid4().hex
+        raw_path = os.path.join(TMP_DIR, f"{item_id}_raw")
+        processed_path = os.path.join(TMP_DIR, f"{item_id}.jpg")
+        file.save(raw_path)
 
-    image_key = f"photos/{item_id}.jpg"
+        # Resize/compress before it ever touches storage or the Groq API.
+        try:
+            process_image(raw_path, processed_path)
+        except Exception as e:
+            skipped.append((file.filename, f"could not process image ({e})"))
+            if os.path.exists(raw_path):
+                os.remove(raw_path)
+            continue
+        finally:
+            if os.path.exists(raw_path):
+                os.remove(raw_path)
 
-    if is_multi:
-        return _handle_multi_upload(item_id, processed_path, image_key)
-    return _handle_single_upload(item_id, processed_path, image_key)
+        image_key = f"photos/{item_id}.jpg"
+        if is_multi:
+            saved_items, error = _process_multi_upload(item_id, processed_path, image_key)
+        else:
+            saved_items, error = _process_single_upload(item_id, processed_path, image_key)
+
+        if error:
+            skipped.append((file.filename, error))
+        else:
+            all_saved_items.extend(saved_items)
+
+    _flash_upload_summary(len(files), all_saved_items, skipped, is_multi)
+    return redirect(url_for("index"))
 
 
 def _upload_processed_photo(processed_path: str, image_key: str) -> str:
@@ -255,25 +322,27 @@ def _default_attrs() -> dict:
     return {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasions": ["casual"]}
 
 
-def _handle_single_upload(item_id: str, processed_path: str, image_key: str):
+def _process_single_upload(item_id: str, processed_path: str, image_key: str):
+    """Classifies and saves ONE garment from ONE already-processed photo.
+    Returns (saved_items, error_or_None) - saved_items is a list of 0 or
+    1 item dicts (kept as a list so /upload can treat this and
+    _process_multi_upload's result uniformly when aggregating a batch)."""
     try:
         attrs = classify_garment(processed_path)
         needs_review = False
     except ClassificationFailed:
         attrs = _default_attrs()
         needs_review = True
-    except Exception as e:
-        flash(f"Unexpected error during classification: {e}")
+    except Exception:
         attrs = _default_attrs()
         needs_review = True
 
     try:
         image_url = _upload_processed_photo(processed_path, image_key)
     except Exception as e:
-        flash(f"Could not upload photo to storage: {e}")
         if os.path.exists(processed_path):
             os.remove(processed_path)
-        return redirect(url_for("index"))
+        return [], f"could not upload photo to storage ({e})"
 
     item = {
         "id": item_id,
@@ -291,15 +360,14 @@ def _handle_single_upload(item_id: str, processed_path: str, image_key: str):
         "added_at": datetime.utcnow().isoformat(),
     }
     save_item(item)
-
-    if needs_review:
-        flash("Auto-detection didn't work this time — this item was saved, please edit its details below.")
-    else:
-        flash(f"Added {item['color']} {item['type']} (warmth {item['warmth']}/10, zone: {item['zone']}).")
-    return redirect(url_for("index"))
+    return [item], None
 
 
-def _handle_multi_upload(item_id: str, processed_path: str, image_key: str):
+def _process_multi_upload(item_id: str, processed_path: str, image_key: str):
+    """Same idea as _process_single_upload, but for a photo expected to
+    contain SEVERAL garments (classify_garments_multi) - see
+    DECISIONS.md ADR-007 for why all detected items share one photo.
+    Returns (saved_items, error_or_None)."""
     try:
         detected = classify_garments_multi(processed_path)
         needs_review = False
@@ -309,20 +377,18 @@ def _handle_multi_upload(item_id: str, processed_path: str, image_key: str):
         # the photo itself is never lost.
         detected = [_default_attrs()]
         needs_review = True
-    except Exception as e:
-        flash(f"Unexpected error during classification: {e}")
+    except Exception:
         detected = [_default_attrs()]
         needs_review = True
 
     try:
         image_url = _upload_processed_photo(processed_path, image_key)
     except Exception as e:
-        flash(f"Could not upload photo to storage: {e}")
         if os.path.exists(processed_path):
             os.remove(processed_path)
-        return redirect(url_for("index"))
+        return [], f"could not upload photo to storage ({e})"
 
-    added_count = 0
+    saved_items = []
     for i, attrs in enumerate(detected):
         # All detected garments share the same source photo - we can't
         # crop individual items out without real image segmentation, so
@@ -343,13 +409,48 @@ def _handle_multi_upload(item_id: str, processed_path: str, image_key: str):
             "added_at": datetime.utcnow().isoformat(),
         }
         save_item(item)
-        added_count += 1
+        saved_items.append(item)
+    return saved_items, None
 
-    if needs_review:
-        flash("Couldn't automatically split up that photo — saved it as one item, please edit its details below.")
-    else:
-        flash(f"Added {added_count} item{'s' if added_count != 1 else ''} from that photo — they all share the same picture since it wasn't taken one-per-item.")
-    return redirect(url_for("index"))
+
+def _flash_upload_summary(file_count: int, saved_items: list, skipped: list, is_multi: bool) -> None:
+    """Builds the flash message(s) for a batch upload of 1+ photos.
+    Preserves the original, specific single-photo wording for the most
+    common case (exactly one photo, nothing skipped) rather than always
+    showing a generic aggregate message."""
+    added_count = len(saved_items)
+    needs_review_count = sum(1 for i in saved_items if i["needs_review"])
+
+    if added_count == 0:
+        if file_count == 1 and skipped:
+            filename, reason = skipped[0]
+            flash(f"Could not process {filename}: {reason}")
+        else:
+            flash(f"Could not process any of the {file_count} photo{'s' if file_count != 1 else ''}.")
+        for filename, reason in skipped[:3]:
+            flash(f"{filename}: {reason}")
+        return
+
+    if file_count == 1 and not skipped:
+        if needs_review_count and is_multi:
+            flash("Couldn't automatically split up that photo — saved it as one item, please edit its details below.")
+        elif needs_review_count:
+            flash("Auto-detection didn't work this time — this item was saved, please edit its details below.")
+        elif is_multi and added_count > 1:
+            flash(f"Added {added_count} items from that photo — they all share the same picture since it wasn't taken one-per-item.")
+        else:
+            item = saved_items[0]
+            flash(f"Added {item['color']} {item['type']} (warmth {item['warmth']}/10, zone: {item['zone']}).")
+        return
+
+    parts = [f"Added {added_count} item{'s' if added_count != 1 else ''} from {file_count} photo{'s' if file_count != 1 else ''}"]
+    if needs_review_count:
+        parts.append(f"({needs_review_count} need review)")
+    flash(" ".join(parts) + ".")
+    if skipped:
+        flash(f"{len(skipped)} photo{'s' if len(skipped) != 1 else ''} could not be processed.")
+        for filename, reason in skipped[:3]:
+            flash(f"{filename}: {reason}")
 
 
 @app.route("/item/<item_id>/edit", methods=["POST"])
@@ -436,6 +537,7 @@ def suggest():
 @app.route("/log-outfit", methods=["POST"])
 def log_outfit_route():
     target_warmth_raw = request.form.get("target_warmth")
+    temp_c_raw = request.form.get("temp_c")
     entry = {
         "log_date": date.today().isoformat(),
         "profile_id": current_profile_id(),
@@ -445,7 +547,10 @@ def log_outfit_route():
         "feet_id": request.form.get("feet_id") or None,
         "head_id": request.form.get("head_id") or None,
         "reasoning": request.form.get("reasoning") or None,
-        "temp_c": request.form.get("temp_c") or None,
+        # KNOWN_ISSUES.md #1b: this was previously stored as an uncast
+        # form string into a numeric Postgres column - target_warmth
+        # (below) was already correctly cast, temp_c was simply missed.
+        "temp_c": float(temp_c_raw) if temp_c_raw else None,
         "condition": request.form.get("condition") or None,
         "target_warmth": int(target_warmth_raw) if target_warmth_raw else None,
     }

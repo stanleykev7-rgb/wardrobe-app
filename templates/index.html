@@ -2,21 +2,51 @@
 {% block title %}My Closet{% endblock %}
 {% block content %}
 
-  <form class="upload show-loading-form" data-loading-message="Uploading photo and identifying the garment…" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+  <form class="upload show-loading-form" data-loading-message="Uploading photo(s) and identifying garments…" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
     <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--indigo)" stroke-width="1.6">
       <path d="M12 3a2 2 0 1 1 2 2v1l7 5H3l7-5V5" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M2 19h20" stroke-linecap="round"/>
     </svg>
     <div class="upload-text">
       <h3>Add a garment</h3>
-      <p>Photograph one item and it's identified automatically.</p>
-      <input type="file" name="photo" accept="image/*" required>
+      <p>Photograph one item (or several at once) and they're identified automatically.</p>
+      <div class="upload-input-row">
+        <label class="upload-choice-btn">
+          Choose photo(s)
+          <input type="file" name="photo" accept="image/*" multiple onchange="updateUploadFileList(this)">
+        </label>
+        <label class="upload-choice-btn">
+          Take a photo
+          <input type="file" name="photo" accept="image/*" capture="environment" onchange="updateUploadFileList(this)">
+        </label>
+      </div>
+      <p class="upload-file-list" id="upload-file-list"></p>
       <label class="multi-upload-check">
-        <input type="checkbox" name="multi"> This photo has several items (e.g. a shelf or flat-lay)
+        <input type="checkbox" name="multi"> One of these photos has several items in it (e.g. a shelf or flat-lay)
       </label>
     </div>
     <input type="submit" value="Add to closet">
   </form>
+
+  <script>
+    function updateUploadFileList(changedInput) {
+      var inputs = document.querySelectorAll('.upload-choice-btn input[type=file]');
+      var names = [];
+      inputs.forEach(function (input) {
+        for (var i = 0; i < input.files.length; i++) {
+          names.push(input.files[i].name);
+        }
+      });
+      var el = document.getElementById('upload-file-list');
+      if (names.length === 0) {
+        el.textContent = '';
+      } else if (names.length <= 3) {
+        el.textContent = names.join(', ');
+      } else {
+        el.textContent = names.length + ' photos selected';
+      }
+    }
+  </script>
 
   <h2 class="section-title">Your closet · {{ closet_count }} item{{ 's' if closet_count != 1 }}</h2>
 

@@ -20,6 +20,13 @@ def update_item(item_id: str, updates: dict) -> None:
 
 
 def delete_item(item_id: str) -> None:
+    # KNOWN_ISSUES.md #1a: a multi-item photo scan gives several item
+    # rows the SAME image_key/image_url (see DECISIONS.md ADR-007 - this
+    # is a known, intentional trade-off, not a bug). Deleting one of
+    # those siblings must not delete the shared photo out from under the
+    # rest - only delete it once no item still references it.
     row = storage_supabase.delete_item_row(item_id)
     if row:
-        storage_supabase.delete_photo(row["image_key"])
+        remaining = storage_supabase.count_items_with_image_key(row["image_key"])
+        if remaining == 0:
+            storage_supabase.delete_photo(row["image_key"])

@@ -171,3 +171,33 @@ def load_swipes(profile_id: str, decision: str = None, limit: int = 500) -> list
         query = query.eq("decision", decision)
     result = query.order("created_at", desc=True).limit(limit).execute()
     return result.data
+
+
+# ---- Item photo-sharing helper (KNOWN_ISSUES.md #1a fix) ----
+
+def count_items_with_image_key(image_key: str) -> int:
+    """How many item rows currently point at this image_key. Called
+    AFTER the row being deleted is already gone (see delete_item_row),
+    so this naturally counts only the remaining siblings - a shared
+    multi-item-photo scan's photo should only be deleted from Storage
+    once this reaches zero."""
+    client = get_client()
+    result = client.table("items").select("id").eq("image_key", image_key).execute()
+    return len(result.data)
+
+
+# ---- Profile deletion cascade (see KNOWN_ISSUES.md #11) ----
+
+def delete_history_for_profile(profile_id: str) -> None:
+    client = get_client()
+    client.table("outfit_history").delete().eq("profile_id", profile_id).execute()
+
+
+def delete_swipes_for_profile(profile_id: str) -> None:
+    client = get_client()
+    client.table("outfit_swipes").delete().eq("profile_id", profile_id).execute()
+
+
+def delete_profile_row(profile_id: str) -> None:
+    client = get_client()
+    client.table("profiles").delete().eq("id", profile_id).execute()
