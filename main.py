@@ -525,6 +525,12 @@ def toggle_laundry(item_id):
 def suggest():
     city = request.args.get("city", os.environ.get("DEFAULT_CITY", "Kochi,IN"))
     occasion = request.args.get("occasion", "any")
+    # Opt-in only (see DECISIONS.md ADR-017) - default is "separates",
+    # today's unchanged behavior. Only an explicit style=dress switches
+    # to the dress-based picker.
+    style = request.args.get("style", "separates")
+    if style not in ("separates", "dress"):
+        style = "separates"
 
     try:
         weather = get_current_weather(city)
@@ -544,11 +550,17 @@ def suggest():
     except Exception:
         bias = 0  # history unavailable shouldn't block getting a suggestion
 
-    try:
-        outfit = suggest_outfit_ai(filtered_closet, weather, bias=bias)
-    except OutfitAIFailed:
-        outfit = suggest_outfit(filtered_closet, weather, bias=bias)
-        outfit["notes"] = outfit.get("notes", []) + ["Styling suggestion unavailable right now — showing closest-warmth picks instead."]
+    if style == "dress":
+        # Deliberately skips outfit_ai.py's AI coordination - combining
+        # ONE dress with feet+head doesn't need the same multi-zone
+        # coordination reasoning that top+bottom+feet+head benefits from.
+        outfit = recommend.suggest_dress_outfit(filtered_closet, weather, bias=bias)
+    else:
+        try:
+            outfit = suggest_outfit_ai(filtered_closet, weather, bias=bias)
+        except OutfitAIFailed:
+            outfit = suggest_outfit(filtered_closet, weather, bias=bias)
+            outfit["notes"] = outfit.get("notes", []) + ["Styling suggestion unavailable right now — showing closest-warmth picks instead."]
 
     if occasion_note:
         outfit["notes"] = [occasion_note] + outfit.get("notes", [])
@@ -565,7 +577,7 @@ def suggest():
         pass  # avatar_image stays None; template falls back to the mannequin
 
     return render_template(
-        "suggest.html", weather=weather, outfit=outfit, city=city, occasion=occasion,
+        "suggest.html", weather=weather, outfit=outfit, city=city, occasion=occasion, style=style,
         weather_icon=weather_icon_svg(weather.get("condition", "")),
         mannequin=mannequin_svg(outfit["picks"]),
         avatar_image=avatar_image,
@@ -584,6 +596,10 @@ def log_outfit_route():
         "bottom_id": request.form.get("bottom_id") or None,
         "feet_id": request.form.get("feet_id") or None,
         "head_id": request.form.get("head_id") or None,
+        # See DECISIONS.md ADR-017 - a dress-based outfit (opt-in via
+        # /suggest?style=dress) has top_id/bottom_id both None and this
+        # set instead, rather than trying to force it into either.
+        "dress_id": request.form.get("dress_id") or None,
         "reasoning": request.form.get("reasoning") or None,
         # KNOWN_ISSUES.md #1b: this was previously stored as an uncast
         # form string into a numeric Postgres column - target_warmth
@@ -620,7 +636,7 @@ def history():
     closet_by_id = {item["id"]: item for item in load_closet(current_profile_id())}
 
     for entry in entries:
-        for zone in ("top", "bottom", "feet", "head"):
+        for zone in ("top", "bottom", "feet", "head", "dress"):
             item_id = entry.get(f"{zone}_id")
             entry[f"{zone}_item"] = closet_by_id.get(item_id) if item_id else None
 

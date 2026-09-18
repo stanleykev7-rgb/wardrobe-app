@@ -254,3 +254,49 @@ def random_outfit_combo(closet: list, weather: dict, bias: int = 0, exclude_keys
             break
 
     return {"picks": picks, "target_warmth": target}
+
+
+def suggest_dress_outfit(closet: list, weather: dict, bias: int = 0) -> dict:
+    """
+    Opt-in alternative to suggest_outfit() for a ONE-PIECE garment (dress,
+    jumpsuit, romper - zone "dress") instead of separate top+bottom items,
+    plus feet, plus optional head. See DECISIONS.md ADR-017: this is
+    explicitly opt-in only (a toggle on /suggest), so /suggest's DEFAULT
+    behavior via suggest_outfit()/suggest_outfit_ai() is completely
+    unaffected by this function's existence.
+
+    Returns the SAME shape as suggest_outfit(), except `picks` has a
+    "dress" key instead of separate "top"/"bottom" keys:
+    {"picks": {"dress": item_or_None, "feet": item_or_None, "head": item_or_None},
+     "target_warmth": int, "notes": [str], "reasoning": None, "style_score": None, "verdict": None}
+    """
+    temp = weather.get("feels_like_c", weather.get("temp_c", 20))
+    target = target_warmth(temp, bias)
+    need_waterproof = weather.get("rain", False)
+    picks = {}
+    notes = []
+
+    dress_candidates = candidates_for_zone(closet, "dress", target, need_waterproof, limit=1)
+    picks["dress"] = dress_candidates[0] if dress_candidates else None
+    if picks["dress"] is None:
+        notes.append("No dress items in your closet yet — add one, or switch back to separates.")
+
+    feet_candidates = candidates_for_zone(closet, "feet", target, need_waterproof, limit=1)
+    picks["feet"] = feet_candidates[0] if feet_candidates else None
+    if picks["feet"] is None:
+        notes.append("No feet items in your closet yet — add some for full suggestions.")
+
+    head_candidates = candidates_for_zone(closet, "head", target, need_waterproof, limit=1)
+    picks["head"] = head_candidates[0] if head_candidates else None
+
+    if need_waterproof and not (picks["dress"] and picks["dress"].get("waterproof")):
+        notes.append("Rain is expected but no waterproof dress was found — consider bringing an umbrella.")
+
+    return {
+        "picks": picks,
+        "target_warmth": target,
+        "notes": notes,
+        "reasoning": None,
+        "style_score": None,
+        "verdict": None,
+    }

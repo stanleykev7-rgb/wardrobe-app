@@ -14,6 +14,10 @@
         <option value="{{ o }}" {{ 'selected' if occasion == o }}>{{ 'Any occasion' if o == 'any' else o|replace('_', ' ')|capitalize }}</option>
       {% endfor %}
     </select>
+    <select name="style">
+      <option value="separates" {{ 'selected' if style == 'separates' }}>Separates</option>
+      <option value="dress" {{ 'selected' if style == 'dress' }}>Dress</option>
+    </select>
     <input type="submit" value="Update">
   </form>
 
@@ -26,6 +30,12 @@
   </div>
 
   <div class="flatlay">
+    {% if outfit.picks.dress %}
+      <div class="fl-item fl-dress">
+        <img src="{{ outfit.picks.dress.image_url }}" alt="{{ outfit.picks.dress.type }}">
+        <div class="label">{{ outfit.picks.dress.color }} {{ outfit.picks.dress.type }}</div>
+      </div>
+    {% endif %}
     {% if outfit.picks.top %}
       <div class="fl-item fl-top">
         <img src="{{ outfit.picks.top.image_url }}" alt="{{ outfit.picks.top.type }}">
@@ -82,6 +92,7 @@
       <input type="hidden" name="occasion" value="{{ occasion if occasion != 'any' else 'casual' }}">
       <input type="hidden" name="top_id" value="{{ outfit.picks.top.id if outfit.picks.top }}">
       <input type="hidden" name="bottom_id" value="{{ outfit.picks.bottom.id if outfit.picks.bottom }}">
+      <input type="hidden" name="dress_id" value="{{ outfit.picks.dress.id if outfit.picks.dress }}">
       <input type="hidden" name="feet_id" value="{{ outfit.picks.feet.id if outfit.picks.feet }}">
       <input type="hidden" name="head_id" value="{{ outfit.picks.head.id if outfit.picks.head }}">
       <input type="hidden" name="reasoning" value="{{ outfit.reasoning or '' }}">

@@ -69,24 +69,45 @@ class AvatarGenerationFailed(Exception):
     failed image-gen call take down the whole suggestion page."""
 
 
+def _describe_item(item: dict, fallback_label: str) -> str:
+    """Prefers the classifier's detailed description (see
+    DECISIONS.md ADR-017 and groq_classifier.py's Stage 1 additions) when
+    present, since it captures pattern/fit/style detail a bare
+    color+type can't - falls back to color+type, then the zone label."""
+    description = (item.get("description") or "").strip()
+    if description:
+        return description
+    color = (item.get("color") or "").strip()
+    garment_type = (item.get("type") or "").strip()
+    words = [w for w in (color, garment_type) if w and w.lower() not in ("unknown", "unclassified item")]
+    return " ".join(words) if words else fallback_label
+
+
 def _prompt_for_picks(picks: dict) -> str:
-    """Builds a short text-to-image prompt from the same per-zone
-    type/color data mannequin.py's _zone_fill() uses. An empty zone (no
-    item picked) is simply omitted from the sentence, same spirit as the
-    mannequin's dashed-placeholder-for-empty-zone behavior. Returns None
-    if nothing was picked at all — nothing to render."""
+    """Builds a short text-to-image prompt from the same per-zone data
+    mannequin.py's _zone_fill() uses (color/type, or the richer
+    `description` field when present). An empty zone (no item picked) is
+    simply omitted from the sentence, same spirit as the mannequin's
+    dashed-placeholder-for-empty-zone behavior. Returns None if nothing
+    was picked at all — nothing to render."""
     parts = []
-    for zone, label in ZONE_LABELS.items():
+
+    dress_item = picks.get("dress")
+    if dress_item:
+        # A one-piece garment (see DECISIONS.md ADR-017) - describe it as
+        # a single dress, not separate top/bottom phrasing.
+        parts.append(_describe_item(dress_item, "dress"))
+    else:
+        for zone in ("top", "bottom"):
+            item = picks.get(zone)
+            if item:
+                parts.append(_describe_item(item, ZONE_LABELS[zone]))
+
+    for zone in ("feet", "head"):
         item = picks.get(zone)
-        if not item:
-            continue
-        color = (item.get("color") or "").strip()
-        garment_type = (item.get("type") or "").strip()
-        words = [w for w in (color, garment_type) if w and w.lower() not in ("unknown", "unclassified item")]
-        if words:
-            parts.append(" ".join(words))
-        else:
-            parts.append(label)
+        if item:
+            parts.append(_describe_item(item, ZONE_LABELS[zone]))
+
     if not parts:
         return None
     outfit_desc = ", ".join(parts)

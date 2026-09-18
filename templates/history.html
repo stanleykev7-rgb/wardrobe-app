@@ -14,7 +14,7 @@
           {% if entry.condition %}, {{ entry.condition|lower }}{% endif %}
         </p>
         <div class="history-thumbs">
-          {% for zone in ['top', 'bottom', 'feet', 'head'] %}
+          {% for zone in ['dress', 'top', 'bottom', 'feet', 'head'] %}
             {% set item = entry[zone ~ '_item'] %}
             {% set had_id = entry[zone ~ '_id'] %}
             {% if item %}

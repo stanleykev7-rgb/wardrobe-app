@@ -27,8 +27,18 @@ def _zone_fill(picks: dict, zone: str) -> tuple:
 
 
 def mannequin_svg(picks: dict) -> str:
-    top_fill, top_class = _zone_fill(picks, "top")
-    bottom_fill, bottom_class = _zone_fill(picks, "bottom")
+    dress_item = picks.get("dress")
+    if dress_item:
+        # A one-piece garment (see DECISIONS.md ADR-017) fills BOTH the
+        # torso and legs regions with the SAME color, since it's a
+        # single continuous garment - not two independent zone picks.
+        dress_fill = color_to_hex(dress_item.get("color", ""))
+        top_fill, top_class = dress_fill, ""
+        bottom_fill, bottom_class = dress_fill, ""
+    else:
+        top_fill, top_class = _zone_fill(picks, "top")
+        bottom_fill, bottom_class = _zone_fill(picks, "bottom")
+
     feet_fill, feet_class = _zone_fill(picks, "feet")
     head_fill, head_class = _zone_fill(picks, "head")
 
