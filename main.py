@@ -357,10 +357,12 @@ def _process_single_upload(item_id: str, processed_path: str, image_key: str):
     try:
         attrs = classify_garment(processed_path)
         needs_review = False
-    except ClassificationFailed:
+    except ClassificationFailed as e:
+        print(f"WARNING: classification failed for item {item_id}: {e}", file=sys.stderr)
         attrs = _default_attrs()
         needs_review = True
-    except Exception:
+    except Exception as e:
+        print(f"WARNING: unexpected error classifying item {item_id}: {type(e).__name__}: {e}", file=sys.stderr)
         attrs = _default_attrs()
         needs_review = True
 
@@ -400,13 +402,15 @@ def _process_multi_upload(item_id: str, processed_path: str, image_key: str):
     try:
         detected = classify_garments_multi(processed_path)
         needs_review = False
-    except ClassificationFailed:
+    except ClassificationFailed as e:
         # Can't segment the photo without AI, so fall back to ONE
         # needs-review item, same as the single-photo failure path -
         # the photo itself is never lost.
+        print(f"WARNING: multi-item classification failed for item {item_id}: {e}", file=sys.stderr)
         detected = [_default_attrs()]
         needs_review = True
-    except Exception:
+    except Exception as e:
+        print(f"WARNING: unexpected error in multi-item classification for {item_id}: {type(e).__name__}: {e}", file=sys.stderr)
         detected = [_default_attrs()]
         needs_review = True
 
