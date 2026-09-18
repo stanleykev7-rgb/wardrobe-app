@@ -24,18 +24,28 @@ Identify it and respond with ONLY a JSON object (no markdown, no extra text) wit
 {
   "type": "short garment name, e.g. 'denim jacket', 'wool sweater', 'rain boots'",
   "color": "dominant color, e.g. 'navy blue'",
-  "zone": "one of: head, top, bottom, feet",
+  "description": "a specific, detailed visual description - pattern, fit, silhouette, notable
+    details (e.g. 'diagonal-striped navy and white button-down, long sleeves, pointed collar,
+    slim fit'), not just a repeat of type/color",
+  "zone": "one of: head, top, bottom, feet, dress",
   "warmth": integer from 1 (very light/summer) to 10 (very warm/heavy winter),
   "waterproof": true or false,
   "occasions": ["array of ALL applicable occasions from: casual, work, semi_formal, formal, party, gym"]
 }
 
 Rules:
-- "zone" must be exactly one of: head, top, bottom, feet.
-- If the item covers the torso (shirt, jacket, sweater, dress-top) use "top".
-- If it covers the legs (pants, skirt, shorts) use "bottom".
+- "zone" must be exactly one of: head, top, bottom, feet, dress.
+- If the item covers the torso only (shirt, jacket, sweater) use "top".
+- If it covers the legs only (pants, skirt, shorts) use "bottom".
+- If it's a ONE-PIECE garment spanning torso AND legs in a single piece (dress, jumpsuit,
+  romper, overall) use "dress" - do NOT force a one-piece garment into "top" or "bottom",
+  since neither correctly represents it.
 - If it's worn on the head (hat, beanie, cap) use "head".
 - If it's footwear (shoes, boots, sandals) use "feet".
+- If the photo shows MULTIPLE garments layered or displayed together (e.g. a jacket worn
+  over a top, or several items visible on the same mannequin/hanger), identify ONLY the
+  single most prominent/foreground garment - the one the photo is clearly centered on -
+  and describe just that one item, not a summary of everything visible.
 - "warmth" should reflect how much insulation the item provides, not just its color.
 - "occasions" is a LIST, not a single value - most garments genuinely suit more than
   one occasion (e.g. a plain button-down shirt is both "work" AND "casual"; a blazer
@@ -95,7 +105,7 @@ def classify_garment(image_path: str) -> dict:
                     }
                 ],
                 temperature=0.2,
-                max_tokens=800,
+                max_tokens=1000,
                 reasoning_effort="none",
                 response_format={"type": "json_object"},
             )
@@ -136,7 +146,9 @@ ONLY a JSON object (no markdown, no extra text) with this exact shape:
     {
       "type": "short garment name, e.g. 'denim jacket'",
       "color": "dominant color, e.g. 'navy blue'",
-      "zone": "one of: head, top, bottom, feet",
+      "description": "a specific, detailed visual description - pattern, fit, silhouette,
+        notable details, not just a repeat of type/color",
+      "zone": "one of: head, top, bottom, feet, dress",
       "warmth": integer from 1 (very light/summer) to 10 (very warm/heavy winter),
       "waterproof": true or false,
       "occasions": ["array of ALL applicable occasions from: casual, work, semi_formal, formal, party, gym"]
@@ -146,8 +158,9 @@ ONLY a JSON object (no markdown, no extra text) with this exact shape:
 
 Rules:
 - List each distinct garment ONCE, even if partially overlapping others in the photo.
-- "zone" must be exactly one of: head, top, bottom, feet (see the single-item
-  rules: torso items are "top", legs are "bottom", headwear is "head",
+- "zone" must be exactly one of: head, top, bottom, feet, dress (see the single-item
+  rules: torso-only items are "top", legs-only are "bottom", a ONE-PIECE garment
+  spanning torso AND legs - dress, jumpsuit, romper - is "dress", headwear is "head",
   footwear is "feet").
 - "occasions" is a LIST - include every occasion a garment reasonably fits
   (most items suit more than one), always at least one.
@@ -193,7 +206,7 @@ def classify_garments_multi(image_path: str) -> list:
                     }
                 ],
                 temperature=0.2,
-                max_tokens=1500,
+                max_tokens=2000,
                 reasoning_effort="none",
                 response_format={"type": "json_object"},
             )
@@ -222,7 +235,7 @@ def classify_garments_multi(image_path: str) -> list:
 
 def _sanitize(data: dict) -> dict:
     zone = str(data.get("zone", "top")).lower()
-    if zone not in ("head", "top", "bottom", "feet"):
+    if zone not in ("head", "top", "bottom", "feet", "dress"):
         zone = "top"
 
     valid_occasions = ("casual", "work", "semi_formal", "formal", "party", "gym")
@@ -240,9 +253,17 @@ def _sanitize(data: dict) -> dict:
         warmth = 5
     warmth = max(1, min(10, warmth))
 
+    # description is new (see AI_CONTEXT.md's classifier notes) - a
+    # model that doesn't return it, or returns something empty/junk,
+    # falls back to "" rather than crashing; main.py's _default_attrs()
+    # covers the "classification failed entirely" case separately.
+    description = data.get("description")
+    description = str(description).strip() if description else ""
+
     return {
         "type": str(data.get("type", "unknown item")),
         "color": str(data.get("color", "unknown")),
+        "description": description,
         "zone": zone,
         "warmth": warmth,
         "waterproof": bool(data.get("waterproof", False)),

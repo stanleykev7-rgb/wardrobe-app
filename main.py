@@ -212,6 +212,7 @@ def filter_by_occasion(closet: list, occasion: str) -> tuple:
 
 CATEGORY_ORDER = [
     ("needs_review", "Needs review"),
+    ("dress", "Dresses"),
     ("top", "Tops"),
     ("bottom", "Bottoms"),
     ("feet", "Feet"),
@@ -319,7 +320,33 @@ def _upload_processed_photo(processed_path: str, image_key: str) -> str:
 
 
 def _default_attrs() -> dict:
-    return {"type": "Unclassified item", "color": "unknown", "zone": "top", "warmth": 5, "waterproof": False, "occasions": ["casual"]}
+    return {"type": "Unclassified item", "color": "unknown", "description": "", "zone": "top", "warmth": 5, "waterproof": False, "occasions": ["casual"]}
+
+
+# Alphabet deliberately excludes visually ambiguous characters (0/O, 1/I/L)
+# since this code is meant to be read off a garment tag by a person, not
+# just stored - readability matters more than a slightly larger keyspace.
+_ITEM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+
+
+def generate_item_code() -> str:
+    """A short, human-readable identifier distinct from the internal
+    database id (a 32-char UUID, never shown to the user) - think of it
+    like a real clothing tag's style/SKU number. Its job is to give each
+    item a stable, referenceable "name" a person (or a future VTON
+    pipeline) can point to unambiguously; distinguishing visually similar
+    items (e.g. two striped dresses) is the description field's job, not
+    this code's. Format: XXX-XXX, e.g. 7K3-F9X.
+
+    Collision risk is deliberately accepted rather than checked/retried:
+    32 symbols^6 ≈ 1 billion combinations is comfortably safe for a
+    personal wardrobe's realistic size, and this is a display
+    convenience, not a security or correctness-critical identifier (the
+    real primary key is still the UUID id) - not worth the complexity of
+    a uniqueness check for this use case."""
+    import secrets
+    chars = [secrets.choice(_ITEM_CODE_ALPHABET) for _ in range(6)]
+    return "".join(chars[:3]) + "-" + "".join(chars[3:])
 
 
 def _process_single_upload(item_id: str, processed_path: str, image_key: str):
@@ -346,11 +373,13 @@ def _process_single_upload(item_id: str, processed_path: str, image_key: str):
 
     item = {
         "id": item_id,
+        "item_code": generate_item_code(),
         "profile_id": current_profile_id(),
         "image_key": image_key,
         "image_url": image_url,
         "type": attrs.get("type", "unknown"),
         "color": attrs.get("color", "unknown"),
+        "description": attrs.get("description", ""),
         "warmth": attrs.get("warmth", 5),
         "zone": attrs.get("zone", "top"),
         "waterproof": attrs.get("waterproof", False),
@@ -392,14 +421,18 @@ def _process_multi_upload(item_id: str, processed_path: str, image_key: str):
     for i, attrs in enumerate(detected):
         # All detected garments share the same source photo - we can't
         # crop individual items out without real image segmentation, so
-        # each entry just points at the same image_key/image_url.
+        # each entry just points at the same image_key/image_url. Each
+        # still gets its OWN item_code, since the code identifies the
+        # garment, not the photo.
         item = {
             "id": uuid.uuid4().hex if i > 0 else item_id,
+            "item_code": generate_item_code(),
             "profile_id": current_profile_id(),
             "image_key": image_key,
             "image_url": image_url,
             "type": attrs.get("type", "unknown"),
             "color": attrs.get("color", "unknown"),
+            "description": attrs.get("description", ""),
             "warmth": attrs.get("warmth", 5),
             "zone": attrs.get("zone", "top"),
             "waterproof": attrs.get("waterproof", False),
@@ -458,7 +491,8 @@ def edit_item(item_id):
     updates = {
         "type": request.form.get("type", "").strip() or "unknown item",
         "color": request.form.get("color", "").strip() or "unknown",
-        "zone": request.form.get("zone") if request.form.get("zone") in ("head", "top", "bottom", "feet") else "top",
+        "description": request.form.get("description", "").strip(),
+        "zone": request.form.get("zone") if request.form.get("zone") in ("head", "top", "bottom", "feet", "dress") else "top",
         "warmth": max(1, min(10, int(request.form.get("warmth", 5) or 5))),
         "waterproof": request.form.get("waterproof") == "on",
         "occasions": [o for o in request.form.getlist("occasions") if o in VALID_OCCASIONS] or ["casual"],
