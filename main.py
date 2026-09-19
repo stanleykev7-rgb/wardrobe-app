@@ -10,7 +10,7 @@ from groq_classifier import classify_garment, classify_garments_multi, Classific
 from weather import get_current_weather, get_forecast
 import recommend
 from recommend import suggest_outfit
-from outfit_ai import suggest_outfit_ai, OutfitAIFailed
+from outfit_ai import suggest_outfit_ai, suggest_dress_outfit_ai, OutfitAIFailed
 from closet_store import load_closet, save_item, update_item, delete_item
 from history_store import log_outfit, get_history, compute_wear_stats, compute_warmth_bias, save_feedback
 from image_utils import process_image
@@ -551,10 +551,15 @@ def suggest():
         bias = 0  # history unavailable shouldn't block getting a suggestion
 
     if style == "dress":
-        # Deliberately skips outfit_ai.py's AI coordination - combining
-        # ONE dress with feet+head doesn't need the same multi-zone
-        # coordination reasoning that top+bottom+feet+head benefits from.
-        outfit = recommend.suggest_dress_outfit(filtered_closet, weather, bias=bias)
+        # See DECISIONS.md ADR-018 - extends ADR-017's opt-in dress
+        # toggle to the AI stylist path (originally left rule-based-only
+        # in Stage 3), mirroring the exact same try/fallback pattern the
+        # separates path already uses below.
+        try:
+            outfit = suggest_dress_outfit_ai(filtered_closet, weather, bias=bias)
+        except OutfitAIFailed:
+            outfit = recommend.suggest_dress_outfit(filtered_closet, weather, bias=bias)
+            outfit["notes"] = outfit.get("notes", []) + ["Styling suggestion unavailable right now — showing closest-warmth picks instead."]
     else:
         try:
             outfit = suggest_outfit_ai(filtered_closet, weather, bias=bias)
